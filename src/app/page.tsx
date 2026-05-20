@@ -238,10 +238,12 @@ export default function App() {
       .order('created_at', { ascending: false })
     if (error) { console.error('[loadJobs]', error); return }
     if (data) {
-      setJobs(data.map(j => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setJobs(data.map((j: any) => ({
         id: j.id, title: j.title, dept: j.dept, type: j.type,
         wolf1: j.wolf1, wolf2: j.wolf2, status: j.status,
-        candidates: (j.candidates ?? []).map((c: Parameters<typeof mapCandidate>[0]) => mapCandidate(c, j.id)),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        candidates: (j.candidates ?? []).map((c: any) => mapCandidate(c, j.id)),
       })))
     }
   }, [supabase])
