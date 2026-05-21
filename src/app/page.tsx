@@ -278,16 +278,21 @@ export default function App() {
   // ── Load or create organisation ──
   const loadOrCreateOrg = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) return
+    if (!session?.access_token) { console.warn('[loadOrCreateOrg] no session'); return }
     try {
       const res = await fetch('/api/org', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
-      if (!res.ok) { console.error('[loadOrCreateOrg]', await res.text()); return }
-      const { org_id } = await res.json()
-      setOrgId(org_id)
+      const body = await res.json()
+      console.log('[loadOrCreateOrg] response:', res.status, body)
+      if (!res.ok) { console.error('[loadOrCreateOrg] error:', body); return }
+      if (body.org_id) {
+        setOrgId(body.org_id)
+      } else {
+        console.error('[loadOrCreateOrg] no org_id in response:', body)
+      }
     } catch (ex) {
-      console.error('[loadOrCreateOrg]', ex)
+      console.error('[loadOrCreateOrg] exception:', ex)
     }
   }, [supabase])
 
