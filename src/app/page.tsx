@@ -436,7 +436,9 @@ export default function App() {
       body: JSON.stringify({ content, name, team_context }),
     })
     if (!res.ok) throw new Error('Analyse fejlede')
-    return res.json()
+    const data = await res.json()
+    console.log('[callAnalyze]', name, 'returned:', data)
+    return data
   }
 
   function buildTeamContext(teamId: number | null | undefined): string {
@@ -481,7 +483,10 @@ export default function App() {
         risks: res.typology_weaknesses ?? res.risks ?? [],
       }).select().single()
 
-      if (dbErr) console.error('[analyzeAndAddToJob]', dbErr)
+      if (dbErr) {
+        console.error('[analyzeAndAddToJob] DB FEJL:', dbErr.message, dbErr.code, dbErr.details, dbErr.hint)
+        alert('Database fejl ved oprettelse:\n' + (dbErr.message ?? 'Ukendt') + '\n\nHar du kørt typology.sql i Supabase?')
+      }
 
       const cand: Candidate = saved
         ? mapCandidate(saved, jobId)
@@ -646,7 +651,10 @@ export default function App() {
         strengths: res.typology_strengths ?? res.strengths ?? [],
         risks: res.typology_weaknesses ?? res.risks ?? [],
       }).select().single()
-      if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
+      if (dbErr) {
+        console.error('[analyzeAndAddToTeam] DB FEJL:', dbErr.message, dbErr.code, dbErr.details, dbErr.hint)
+        alert('Database fejl ved oprettelse:\n' + (dbErr.message ?? 'Ukendt') + '\n\nHar du kørt typology.sql i Supabase?')
+      }
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
         : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], teamId }
@@ -1261,7 +1269,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="rr-foot">
-                      <div />
+                      {(r.mbti || r.enneagram) ? (
+                        <span style={{ padding: '3px 9px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 5, fontSize: 11, fontWeight: 700, letterSpacing: '1px', fontFamily: 'monospace' }}>
+                          {r.mbti}{r.enneagram ? ` ${r.enneagram}` : ''}
+                        </span>
+                      ) : <div />}
                       <div className="rr-flags">
                         {r.flags.length ? r.flags.map((f, i) => {
                           const cls = f.severity === 'red' ? 'red' : f.severity === 'ok' ? 'ok' : 'warn'
