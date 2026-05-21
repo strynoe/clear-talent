@@ -23,11 +23,17 @@ function mockResult(name: string) {
   return {
     headline: 'Solid profil med relevant baggrund',
     score,
-    personal_bio: `${name} er en person med en tydelig retning og engagement i sit arbejdsliv. Baggrunden vidner om en person der sætter pris på faglig udvikling og meningsfulde arbejdsrelationer.`,
+    personal_bio: `${name} er en person med en tydelig retning og engagement i sit arbejdsliv.`,
     summary: `${name} fremstår som en kompetent profil baseret på det indsendte materiale.`,
+    mbti: 'INFJ',
+    enneagram: '5w4',
+    typology_summary: 'En reflekteret og analytisk profil med fokus på dybde og mening.',
+    detailed_explanation: 'En typologisk vurdering er ikke mulig uden AI. Dette er en placeholder.',
+    typology_strengths: ['Refleksion', 'Engagement', 'Faglig dybde'],
+    typology_weaknesses: ['Kan virke distanceret'],
+    collab_strengths: ['Bidrager med dybde', 'Stærk indre kompas'],
+    collab_risks: ['Kan trække sig under pres'],
     flags: [{ severity: 'ok' as const, text: 'Profil oprettet via invitationslink' }],
-    strengths: ['Faglig kompetence', 'Kommunikation', 'Samarbejdsevne'],
-    risks: ['Begrænset erfaring på området'],
     interview_questions: [
       'Beskriv din stærkeste faglige kompetence med et konkret eksempel.',
       'Hvad motiverer dig mest i dit arbejde?',
@@ -72,19 +78,53 @@ export async function POST(request: Request) {
     // AI analysis
     let result = mockResult(name.trim())
 
-    if (process.env.ANTHROPIC_API_KEY) {
-      const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
-Analysér kandidaten ud fra det givne materiale og giv en faglig vurdering.
+    // Fetch team context (other members of same job's team or same team)
+    let teamContext = ''
+    try {
+      if (invite.type === 'team') {
+        const r = await fetch(sbUrl(`employees?team_id=eq.${invite.target_id}&select=name,mbti,enneagram`), { headers: sbHeaders() })
+        const rows = await r.json()
+        if (Array.isArray(rows) && rows.length > 0) {
+          teamContext = rows.filter((x: { mbti?: string }) => x.mbti).map((x: { name: string; mbti?: string; enneagram?: string }) => `- ${x.name} (MBTI: ${x.mbti || '?'}, Enneagram: ${x.enneagram || '?'})`).join('\n')
+        }
+      } else if (invite.type === 'job') {
+        const jobRes = await fetch(sbUrl(`jobs?id=eq.${invite.target_id}&select=team_id`), { headers: sbHeaders() })
+        const jobRows = await jobRes.json()
+        const teamId = Array.isArray(jobRows) && jobRows[0]?.team_id
+        if (teamId) {
+          const r = await fetch(sbUrl(`employees?team_id=eq.${teamId}&select=name,mbti,enneagram`), { headers: sbHeaders() })
+          const rows = await r.json()
+          if (Array.isArray(rows) && rows.length > 0) {
+            teamContext = rows.filter((x: { mbti?: string }) => x.mbti).map((x: { name: string; mbti?: string; enneagram?: string }) => `- ${x.name} (MBTI: ${x.mbti || '?'}, Enneagram: ${x.enneagram || '?'})`).join('\n')
+          }
+        }
+      }
+    } catch { /* ignore team context failure */ }
 
-JSON format:
+    if (process.env.ANTHROPIC_API_KEY) {
+      const sys = `Du er ekspert i MBTI og Enneagrammet og bruger dem til at vurdere kandidater til rekruttering.
+
+VIGTIGT:
+- Læseren har INGEN forhåndskendskab til MBTI eller Enneagram. Forklar ALT i hverdagssprog.
+- Brug aldrig fagudtryk uden at forklare dem kort.
+- Dine vurderinger er kvalificerede gæt baseret på CV — IKKE en officiel test.
+- Hvis der er angivet eksisterende teammedlemmer, brug dem til konkret at vurdere kollaborationsrisici med de navngivne personer.
+
+Returnér KUN valid JSON uden markdown:
 {
   "headline": "kort baggrund max 55 tegn",
-  "score": tal mellem 30 og 97,
-  "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem. Skriv varmt og nysgerrigt, ikke korporativt.",
+  "score": tal 30-97,
+  "personal_bio": "2-3 sætninger om personen som menneske",
   "summary": "3-4 sætninger samlet professionel vurdering",
+  "mbti": "fire bogstaver fx INTJ",
+  "enneagram": "tal + vinge fx 5w4",
+  "typology_summary": "1-2 sætninger på hverdagssprog uden fagudtryk",
+  "detailed_explanation": "4-6 sætninger der forklarer MBTI og Enneagram i klart sprog. Forklar hvert bogstav/tal kort.",
+  "typology_strengths": ["styrke 1","...2","...3","...4"],
+  "typology_weaknesses": ["svaghed 1","...2","...3"],
+  "collab_strengths": ["bidrag 1","...2","...3"],
+  "collab_risks": ["udfordring 1 (specifik hvis team-kontekst)","...2"],
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "strengths": ["styrke 1","styrke 2","styrke 3"],
-  "risks": ["risiko 1","risiko 2"],
   "interview_questions": ["spørgsmål 1","spørgsmål 2","spørgsmål 3"]
 }`
       try {
@@ -97,9 +137,9 @@ JSON format:
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
+            max_tokens: 1800,
             system: sys,
-            messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}` }],
+            messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}${teamContext ? `\n\nEKSISTERENDE TEAMMEDLEMMER:\n${teamContext}` : ''}` }],
           }),
         })
         if (resp.ok) {
@@ -122,14 +162,21 @@ JSON format:
 
     const record = {
       name: name.trim(), score, grad, bars, verdict,
-      wolf: '', wolf_sec: '',
+      wolf: '', wolf_sec: '', wolf_reasoning: '',
       headline: result.headline ?? '',
       summary: result.summary ?? '',
-      wolf_reasoning: '',
       personal_bio: result.personal_bio ?? '',
+      mbti: result.mbti ?? '',
+      enneagram: result.enneagram ?? '',
+      typology_summary: result.typology_summary ?? '',
+      detailed_explanation: result.detailed_explanation ?? '',
+      typology_strengths: result.typology_strengths ?? [],
+      typology_weaknesses: result.typology_weaknesses ?? [],
+      collab_strengths: result.collab_strengths ?? [],
+      collab_risks: result.collab_risks ?? [],
       flags: result.flags ?? [],
-      strengths: result.strengths ?? [],
-      risks: result.risks ?? [],
+      strengths: result.typology_strengths ?? result.strengths ?? [],
+      risks: result.typology_weaknesses ?? result.risks ?? [],
       interview_questions: result.interview_questions ?? [],
     }
 

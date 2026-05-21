@@ -4,55 +4,69 @@ function rnd(min: number, max: number) {
 
 function mockResult(name: string) {
   const score = rnd(42, 94)
-  const flags =
-    score >= 80
-      ? [
-          { severity: 'ok', text: 'Stærkt CV med dokumenterede resultater' },
-          { severity: 'ok', text: 'Stabil karrierevej og høj anciennitet' },
-        ]
-      : score >= 60
-        ? [
-            { severity: 'warn', text: 'Middelmådig match på kernekompetencer' },
-            { severity: 'warn', text: 'Relativt kort erfaring indenfor feltet' },
-          ]
-        : [
-            { severity: 'red', text: 'Væsentlige gap i relevante kompetencer' },
-            { severity: 'warn', text: 'Begrænset anciennitet på det aktuelle niveau' },
-          ]
+  const flags = score >= 80
+    ? [{ severity: 'ok', text: 'Stærkt CV med dokumenterede resultater' }]
+    : [{ severity: 'warn', text: 'Middelmådig match på kernekompetencer' }]
   return {
     headline: 'Erfaren professional med solid baggrund',
     score,
-    personal_bio: `${name} fremstår som en engageret person med en tydelig retning i sit karrierevalg. Baggrunden vidner om en person der sætter pris på faglig udvikling og meningsfulde arbejdsrelationer.`,
-    summary: `${name} fremstår som en kompetent kandidat med relevant erfaring. Profilen matcher rollen på centrale parametre. Anbefales til en nærmere dialog for at afdække kulturel pasning og motivation.`,
+    personal_bio: `${name} fremstår som en engageret person med en tydelig retning i sit karrierevalg.`,
+    summary: `${name} fremstår som en kompetent kandidat med relevant erfaring.`,
+    mbti: 'INFJ',
+    enneagram: '5w4',
+    typology_summary: 'En dyb, idealistisk og analytisk profil der trives med komplekse opgaver og meningsfulde projekter.',
+    detailed_explanation: 'MBTI-typen INFJ står for Introvert, Intuitiv, Følende, Vurderende — det betyder en person der orienterer sig indad, tænker i mønstre og helheder, lægger vægt på værdier og foretrækker struktur. Enneagram 5w4 (Iagttager med vinge mod Individualist) beskriver et menneske der søger viden og uafhængighed, samtidig med en kunstnerisk og introspektiv side. Tilsammen giver det en eftertænksom, principfast og kreativ tilgang til arbejdslivet.',
+    typology_strengths: ['Dyb refleksion og indsigt', 'Stærk indre overbevisning og værdier', 'Kreativ problemløsning', 'Forstår mennesker på et dybt plan'],
+    typology_weaknesses: ['Kan trække sig socialt under pres', 'Tendens til perfektionisme', 'Svært ved overfladisk smalltalk'],
+    collab_strengths: ['Bringer dybde og perspektiv til samtaler', 'Loyal og engageret i meningsfulde projekter', 'God til at se langsigtede konsekvenser'],
+    collab_risks: ['Kan opfattes som distanceret af mere udadvendte kolleger', 'Behov for plads og ro — kan miste energi i konstante møder'],
     flags,
-    strengths: ['Faglig kompetence', 'Kommunikation', 'Samarbejdsevne'],
-    risks: ['Uklar karriereretning', 'Begrænset ledererfaring'],
     interview_questions: [
-      'Beskriv din stærkeste faglige kompetence og giv et konkret eksempel.',
-      'Hvad motiverer dig i dette job fremfor andre muligheder?',
-      'Fortæl om en situation hvor du skulle navigere en vanskelig beslutning.',
+      'Hvilken type opgaver giver dig mest energi?',
+      'Hvordan håndterer du konflikter i et team?',
+      'Beskriv en situation hvor du har stået fast på dine værdier.',
     ],
   }
 }
 
 export async function POST(request: Request) {
-  const { content, name } = await request.json()
+  const { content, name, team_context } = await request.json()
 
   if (process.env.ANTHROPIC_API_KEY) {
-    const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
-Analysér kandidaten ud fra det givne materiale og giv en faglig vurdering.
+    const sys = `Du er ekspert i MBTI og Enneagrammet og bruger dem til at vurdere kandidater til rekruttering.
 
-JSON format:
+VIGTIGT:
+- Læseren har INGEN forhåndskendskab til MBTI eller Enneagram. Forklar ALT i hverdagssprog.
+- Brug aldrig fagudtryk uden at forklare dem kort. "Introvert" → "orienterer sig indad", "Intuitiv" → "tænker i mønstre og muligheder", osv.
+- Dine vurderinger er kvalificerede gæt baseret på CV og baggrund — IKKE en officiel test. Vær varsom med absolutte påstande.
+- Hvis team_context er angivet, brug den til konkret at vurdere kollaborationsrisici med de specifikke navngivne teammedlemmer.
+
+MBTI-typer er fire bogstaver (fx INTJ, ENFP). Enneagram er et tal 1-9 + valgfri vinge (fx 5w4, 7w6).
+
+Returnér KUN valid JSON uden markdown:
 {
   "headline": "kort baggrund max 55 tegn",
-  "score": tal mellem 30 og 97,
-  "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem — baseret på CV. Skriv varmt og nysgerrigt, ikke korporativt.",
+  "score": tal 30-97,
+  "personal_bio": "2-3 sætninger om personen som menneske, varmt sprog",
   "summary": "3-4 sætninger samlet professionel vurdering",
+  "mbti": "fire bogstaver fx INTJ",
+  "enneagram": "tal + vinge fx 5w4",
+  "typology_summary": "1-2 sætninger på hverdagssprog der beskriver personen typologisk uden fagudtryk",
+  "detailed_explanation": "4-6 sætninger der forklarer både MBTI og Enneagram type i klart sprog. Forklar hvert bogstav/tal kort. Beskriv hvordan kombinationen påvirker arbejdsstil, beslutninger og samspil.",
+  "typology_strengths": ["typologisk styrke 1", "...2", "...3", "...4"],
+  "typology_weaknesses": ["typologisk svaghed 1", "...2", "...3"],
+  "collab_strengths": ["sådan bidrager de godt i team 1", "...2", "...3"],
+  "collab_risks": ["mulig udfordring 1 (specifikt hvis team_context er angivet)", "...2"],
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "strengths": ["styrke 1","styrke 2","styrke 3"],
-  "risks": ["risiko 1","risiko 2"],
-  "interview_questions": ["spørgsmål 1","spørgsmål 2","spørgsmål 3"]
+  "interview_questions": ["spørgsmål 1", "spørgsmål 2", "spørgsmål 3"]
 }`
+
+    const userContent = [
+      `Kandidat: ${name}`,
+      content || '(ingen tekst)',
+      team_context ? `\n\nEKSISTERENDE TEAMMEDLEMMER (brug til specifikke collab_risks):\n${team_context}` : '',
+    ].filter(Boolean).join('\n\n')
+
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -63,9 +77,9 @@ JSON format:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
+          max_tokens: 1800,
           system: sys,
-          messages: [{ role: 'user', content: `Kandidat: ${name}\n\n${content || '(ingen tekst)'}` }],
+          messages: [{ role: 'user', content: userContent }],
         }),
       })
       if (resp.ok) {

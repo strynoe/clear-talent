@@ -7,7 +7,13 @@ import { useRouter } from 'next/navigation'
 // ─── Types ────────────────────────────────────────────────
 interface Bar { l: string; v: number }
 interface Flag { severity: 'red' | 'warn' | 'ok'; text: string }
-interface Candidate {
+interface Typology {
+  mbti: string; enneagram: string
+  typology_summary: string; detailed_explanation: string
+  typology_strengths: string[]; typology_weaknesses: string[]
+  collab_strengths: string[]; collab_risks: string[]
+}
+interface Candidate extends Typology {
   id: number; name: string; score: number; wolf: string; wolfSec: string
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
   wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
@@ -19,7 +25,7 @@ interface Job {
   wolf1: string; wolf2: string; status: 'active' | 'paused'; candidates: Candidate[]
   team_id?: number | null; description?: string
 }
-interface Employee {
+interface Employee extends Typology {
   id: number; name: string; score: number; wolf: string; wolfSec: string
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
   wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
@@ -84,6 +90,9 @@ function makeFakeCandidate(
     id, jobId, grad, bars,
     verdict: verdictFromScore(overrides.score),
     summary: '', wolf_reasoning: '', flags: [], interview_questions: [], strengths: [], risks: [],
+    mbti: '', enneagram: '', typology_summary: '', detailed_explanation: '',
+    typology_strengths: [], typology_weaknesses: [],
+    collab_strengths: [], collab_risks: [],
     ...overrides,
     personal_bio: overrides.personal_bio ?? '',
   }
@@ -95,6 +104,34 @@ const initialJobs: Job[] = []
 function WolfDots(_props: { wolf: string; wolfSec?: string }) {
   // Type-system fjernet — komponent beholdt som placeholder så UI-strukturen er intakt
   return null
+}
+
+function TypologyExplainer({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginTop: 14, border: '1px solid var(--b1)', borderRadius: 10, overflow: 'hidden', background: 'var(--s2)' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', background: 'transparent', border: 'none', padding: '11px 14px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 12,
+          fontWeight: 500, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '.8px',
+        }}
+      >
+        <span>{open ? 'Skjul' : 'Vis'} detaljeret forklaring</span>
+        <span style={{ fontSize: 14, transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--b1)' }}>
+          <p style={{ margin: '14px 0 0', fontSize: 13, color: 'var(--ink)', lineHeight: 1.75, fontWeight: 300 }}>
+            {text}
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function BarRow({ bar, prefix }: { bar: Bar; prefix: 'cc' | 'cp' }) {
@@ -184,7 +221,14 @@ function mapEmployee(e: any, teamId: number): Employee {
     wolf: e.wolf, wolfSec: e.wolf_sec, grad: e.grad,
     bars: e.bars ?? [], verdict: e.verdict,
     headline: e.headline, summary: e.summary,
-    wolf_reasoning: e.wolf_reasoning, personal_bio: e.personal_bio ?? '',
+    wolf_reasoning: e.wolf_reasoning ?? '', personal_bio: e.personal_bio ?? '',
+    mbti: e.mbti ?? '', enneagram: e.enneagram ?? '',
+    typology_summary: e.typology_summary ?? '',
+    detailed_explanation: e.detailed_explanation ?? '',
+    typology_strengths: e.typology_strengths ?? [],
+    typology_weaknesses: e.typology_weaknesses ?? [],
+    collab_strengths: e.collab_strengths ?? [],
+    collab_risks: e.collab_risks ?? [],
     flags: e.flags ?? [], strengths: e.strengths ?? [],
     risks: e.risks ?? [], interview_questions: e.interview_questions ?? [],
     teamId,
@@ -197,7 +241,14 @@ function mapCandidate(c: any, jobId: number): Candidate {
     wolf: c.wolf, wolfSec: c.wolf_sec, grad: c.grad,
     bars: c.bars ?? [], verdict: c.verdict,
     headline: c.headline, summary: c.summary,
-    wolf_reasoning: c.wolf_reasoning, personal_bio: c.personal_bio ?? '',
+    wolf_reasoning: c.wolf_reasoning ?? '', personal_bio: c.personal_bio ?? '',
+    mbti: c.mbti ?? '', enneagram: c.enneagram ?? '',
+    typology_summary: c.typology_summary ?? '',
+    detailed_explanation: c.detailed_explanation ?? '',
+    typology_strengths: c.typology_strengths ?? [],
+    typology_weaknesses: c.typology_weaknesses ?? [],
+    collab_strengths: c.collab_strengths ?? [],
+    collab_risks: c.collab_risks ?? [],
     flags: c.flags ?? [], strengths: c.strengths ?? [],
     risks: c.risks ?? [], interview_questions: c.interview_questions ?? [],
     jobId,
@@ -402,14 +453,23 @@ export default function App() {
   }
 
   // ── AI analyze ──
-  async function callAnalyze(content: string, name: string) {
+  async function callAnalyze(content: string, name: string, team_context?: string) {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, name }),
+      body: JSON.stringify({ content, name, team_context }),
     })
     if (!res.ok) throw new Error('Analyse fejlede')
     return res.json()
+  }
+
+  function buildTeamContext(teamId: number | null | undefined): string {
+    if (!teamId) return ''
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return ''
+    const members = team.employees.filter(e => !e._loading && !e._error && e.mbti)
+    if (members.length === 0) return ''
+    return members.map(e => `- ${e.name} (MBTI: ${e.mbti}, Enneagram: ${e.enneagram || '?'})`).join('\n')
   }
 
   async function analyzeAndAddToJob(content: string, name: string, jobId: number) {
@@ -419,29 +479,38 @@ export default function App() {
       ...j, candidates: [...j.candidates, { id: tempId, name, _loading: true } as Candidate],
     }))
     try {
-      const res = await callAnalyze(content, name)
+      const job = jobs.find(j => j.id === jobId)
+      const teamContext = buildTeamContext(job?.team_id)
+      const res = await callAnalyze(content, name, teamContext)
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
 
       const { data: saved, error: dbErr } = await supabase.from('candidates').insert({
         job_id: jobId, name, score, grad, bars,
-        wolf: '', wolf_sec: '', verdict,
+        wolf: '', wolf_sec: '', wolf_reasoning: '', verdict,
         headline: res.headline ?? '',
         summary: res.summary ?? '',
-        wolf_reasoning: '',
         personal_bio: res.personal_bio ?? '',
+        mbti: res.mbti ?? '',
+        enneagram: res.enneagram ?? '',
+        typology_summary: res.typology_summary ?? '',
+        detailed_explanation: res.detailed_explanation ?? '',
+        typology_strengths: res.typology_strengths ?? [],
+        typology_weaknesses: res.typology_weaknesses ?? [],
+        collab_strengths: res.collab_strengths ?? [],
+        collab_risks: res.collab_risks ?? [],
         flags: res.flags ?? [],
         interview_questions: res.interview_questions ?? [],
-        strengths: res.strengths ?? [],
-        risks: res.risks ?? [],
+        strengths: res.typology_strengths ?? res.strengths ?? [],
+        risks: res.typology_weaknesses ?? res.risks ?? [],
       }).select().single()
 
       if (dbErr) console.error('[analyzeAndAddToJob]', dbErr)
 
       const cand: Candidate = saved
         ? mapCandidate(saved, jobId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], jobId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], jobId }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
         ...j, candidates: j.candidates.map(c => c.id === tempId ? cand : c),
@@ -581,23 +650,32 @@ export default function App() {
       ...t, employees: [...t.employees, { id: tempId, name, _loading: true } as Employee],
     }))
     try {
-      const res = await callAnalyze(content, name)
+      const teamContext = buildTeamContext(teamId)
+      const res = await callAnalyze(content, name, teamContext)
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
       const { data: saved, error: dbErr } = await supabase.from('employees').insert({
         team_id: teamId, name, score, grad, bars,
-        wolf: '', wolf_sec: '', verdict,
+        wolf: '', wolf_sec: '', wolf_reasoning: '', verdict,
         headline: res.headline ?? '', summary: res.summary ?? '',
-        wolf_reasoning: '',
         personal_bio: res.personal_bio ?? '',
+        mbti: res.mbti ?? '',
+        enneagram: res.enneagram ?? '',
+        typology_summary: res.typology_summary ?? '',
+        detailed_explanation: res.detailed_explanation ?? '',
+        typology_strengths: res.typology_strengths ?? [],
+        typology_weaknesses: res.typology_weaknesses ?? [],
+        collab_strengths: res.collab_strengths ?? [],
+        collab_risks: res.collab_risks ?? [],
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
-        strengths: res.strengths ?? [], risks: res.risks ?? [],
+        strengths: res.typology_strengths ?? res.strengths ?? [],
+        risks: res.typology_weaknesses ?? res.risks ?? [],
       }).select().single()
       if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -744,6 +822,12 @@ export default function App() {
           <div className="cp-identity">
             <div className="cp-name">{c.name}</div>
             <div className="cp-headline">{c.headline || j.title}</div>
+            {(c.mbti || c.enneagram) && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {c.mbti && <span style={{ padding: '3px 9px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: '1px', color: 'var(--ink)' }}>{c.mbti}</span>}
+                {c.enneagram && <span style={{ padding: '3px 9px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>Enn. {c.enneagram}</span>}
+              </div>
+            )}
           </div>
           <div className="cp-verdict-block">
             <div className={`cp-score-big ${sClass}`}>{c.score}</div>
@@ -765,12 +849,107 @@ export default function App() {
               <div className="cp-section-title">Adfærdsprofil</div>
               {fullBars.map((b, i) => <BarRow key={i} bar={b} prefix="cp" />)}
             </div>
-            <div className="cp-section" style={{ opacity: .6, border: '1px dashed var(--b1)', borderRadius: 10, padding: '20px' }}>
+            {/* Personprofil — MBTI + Enneagram */}
+            <div className="cp-section">
               <div className="cp-section-title">Personprofil</div>
-              <p className="cp-wolf-reasoning" style={{ fontStyle: 'italic', color: 'var(--m1)' }}>
-                Personlighedsteorien er under opbygning. Her vil kandidatens type og arbejdsstil vises når den nye teori er klar.
-              </p>
+
+              {c.mbti || c.enneagram ? (
+                <>
+                  {/* Type-badges */}
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {c.mbti && (
+                      <div style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, padding: '10px 14px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>MBTI</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 700, letterSpacing: '1px' }}>{c.mbti}</div>
+                      </div>
+                    )}
+                    {c.enneagram && (
+                      <div style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, padding: '10px 14px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>Enneagram</div>
+                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 700, letterSpacing: '1px' }}>{c.enneagram}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hverdagsforklaring */}
+                  {c.typology_summary && (
+                    <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
+                      {c.typology_summary}
+                    </p>
+                  )}
+
+                  {/* Expandable detaljeret forklaring */}
+                  {c.detailed_explanation && (
+                    <TypologyExplainer text={c.detailed_explanation} />
+                  )}
+
+                  {/* Styrker / svagheder grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
+                    {c.typology_strengths.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 6, fontWeight: 500 }}>Typologiske styrker</div>
+                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {c.typology_strengths.map((s, i) => (
+                            <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, paddingLeft: 12, position: 'relative' }}>
+                              <span style={{ position: 'absolute', left: 0, color: 'var(--accent)' }}>+</span>{s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {c.typology_weaknesses.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 6, fontWeight: 500 }}>Typologiske svagheder</div>
+                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {c.typology_weaknesses.map((s, i) => (
+                            <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, paddingLeft: 12, position: 'relative' }}>
+                              <span style={{ position: 'absolute', left: 0, color: 'var(--warn)' }}>−</span>{s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--m2)', fontStyle: 'italic' }}>
+                  Profilanalyse er endnu ikke kørt for denne person.
+                </p>
+              )}
             </div>
+
+            {/* Samarbejde i team */}
+            {(c.collab_strengths.length > 0 || c.collab_risks.length > 0) && (
+              <div className="cp-section">
+                <div className="cp-section-title">Samarbejde i team</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  {c.collab_strengths.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8, fontWeight: 500 }}>Sådan bidrager de</div>
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {c.collab_strengths.map((s, i) => (
+                          <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, lineHeight: 1.5, paddingLeft: 16, position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: 0, color: 'var(--accent)' }}>✓</span>{s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {c.collab_risks.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8, fontWeight: 500 }}>Mulige udfordringer</div>
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {c.collab_risks.map((s, i) => (
+                          <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, lineHeight: 1.5, paddingLeft: 16, position: 'relative' }}>
+                            <span style={{ position: 'absolute', left: 0, color: 'var(--warn)' }}>⚠</span>{s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="cp-section">
               <div className="cp-section-title">Styrker</div>
               <div className="cp-tags">{strengths.map((s, i) => <span key={i} className="cp-tag strength">{s}</span>)}</div>
