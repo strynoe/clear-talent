@@ -445,17 +445,26 @@ export default function App() {
         body: JSON.stringify({ type, target_id: targetId, label }),
       })
       const d = await res.json()
-      if (d.url) {
+      if (!res.ok || !d.url) {
+        const msg = d.error ?? 'API fejl'
+        console.error('[copyInviteLink]', msg)
+        window.alert('Fejl ved oprettelse af link:\n' + msg)
+        setCopyLabel(prev => ({ ...prev, [key]: '' }))
+        return
+      }
+      // Try clipboard API, fall back to prompt
+      try {
         await navigator.clipboard.writeText(d.url)
         setCopyLabel(prev => ({ ...prev, [key]: '✓ Kopieret!' }))
-        setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2500)
-      } else {
-        setCopyLabel(prev => ({ ...prev, [key]: 'Fejl' }))
-        setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2000)
+      } catch {
+        window.prompt('Kopiér invitationslinket:', d.url)
+        setCopyLabel(prev => ({ ...prev, [key]: '✓ Link klar' }))
       }
-    } catch {
-      setCopyLabel(prev => ({ ...prev, [key]: 'Fejl' }))
-      setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2000)
+      setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 3000)
+    } catch (ex) {
+      console.error('[copyInviteLink] network error', ex)
+      window.alert('Netværksfejl — tjek konsollen for detaljer.')
+      setCopyLabel(prev => ({ ...prev, [key]: '' }))
     }
   }
 
