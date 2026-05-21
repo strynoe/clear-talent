@@ -432,6 +432,31 @@ export default function App() {
   function openEmployeeProfile(empId: number) { setCurrentEmployeeId(empId); setPage('employee-profile') }
 
   const [teamErr, setTeamErr] = useState('')
+  const [copyLabel, setCopyLabel] = useState<Record<string, string>>({})
+
+  async function copyInviteLink(type: 'job' | 'team', targetId: number, label: string) {
+    const key = `${type}-${targetId}`
+    setCopyLabel(prev => ({ ...prev, [key]: '…' }))
+    try {
+      const res = await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, target_id: targetId, label }),
+      })
+      const d = await res.json()
+      if (d.url) {
+        await navigator.clipboard.writeText(d.url)
+        setCopyLabel(prev => ({ ...prev, [key]: '✓ Kopieret!' }))
+        setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2500)
+      } else {
+        setCopyLabel(prev => ({ ...prev, [key]: 'Fejl' }))
+        setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2000)
+      }
+    } catch {
+      setCopyLabel(prev => ({ ...prev, [key]: 'Fejl' }))
+      setTimeout(() => setCopyLabel(prev => ({ ...prev, [key]: '' })), 2000)
+    }
+  }
 
   async function createTeam() {
     console.log('[createTeam] clicked, name:', teamName)
@@ -604,7 +629,7 @@ export default function App() {
   } else if (page === 'job-detail' && currentJob) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showJobs}>Åbne stillinger</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentJob.title}</span></>)
-    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={navCv}>CV Analyse</button><button className="tb-btn tb-btn-primary" onClick={openCandModal}>+ Tilføj kandidat</button></>)
+    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={navCv}>CV Analyse</button><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('job', currentJob.id, currentJob.title)}>{copyLabel[`job-${currentJob.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openCandModal}>+ Tilføj kandidat</button></>)
   } else if (page === 'cv') {
     breadcrumb = <span className="tb-crumb active">CV Analyse</span>
     topbarActions = <div className="ai-pill">AI AKTIV</div>
@@ -618,7 +643,7 @@ export default function App() {
   } else if (page === 'team-detail' && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentTeam.name}</span></>)
-    topbarActions = <button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button>
+    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button></>)
   } else if (page === 'employee-profile' && currentEmployee && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openTeam(currentTeamId!)}>{currentTeam.name}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentEmployee.name}</span></>)
