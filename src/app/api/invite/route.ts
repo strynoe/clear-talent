@@ -39,7 +39,6 @@ export async function POST(request: Request) {
 
   if (error || !data) return Response.json({ error: error?.message ?? 'Failed' }, { status: 500 })
 
-  const base = process.env.NEXT_PUBLIC_SITE_URL
-    ?? (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000')
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin
   return Response.json({ token: data.id, url: `${base}/apply/${data.id}` })
 }
