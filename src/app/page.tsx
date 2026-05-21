@@ -10,7 +10,7 @@ interface Flag { severity: 'red' | 'warn' | 'ok'; text: string }
 interface Candidate {
   id: number; name: string; score: number; wolf: string; wolfSec: string
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  wolf_reasoning: string; flags: Flag[]; interview_questions: string[]
+  wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
   strengths: string[]; risks: string[]; jobId: number
   _loading?: boolean; _error?: string
 }
@@ -22,7 +22,7 @@ interface Job {
 interface Employee {
   id: number; name: string; score: number; wolf: string; wolfSec: string
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  wolf_reasoning: string; flags: Flag[]; interview_questions: string[]
+  wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
   strengths: string[]; risks: string[]; teamId: number
   _loading?: boolean; _error?: string
 }
@@ -192,7 +192,7 @@ function mapEmployee(e: any, teamId: number): Employee {
     wolf: e.wolf, wolfSec: e.wolf_sec, grad: e.grad,
     bars: e.bars ?? [], verdict: e.verdict,
     headline: e.headline, summary: e.summary,
-    wolf_reasoning: e.wolf_reasoning,
+    wolf_reasoning: e.wolf_reasoning, personal_bio: e.personal_bio ?? '',
     flags: e.flags ?? [], strengths: e.strengths ?? [],
     risks: e.risks ?? [], interview_questions: e.interview_questions ?? [],
     teamId,
@@ -205,7 +205,7 @@ function mapCandidate(c: any, jobId: number): Candidate {
     wolf: c.wolf, wolfSec: c.wolf_sec, grad: c.grad,
     bars: c.bars ?? [], verdict: c.verdict,
     headline: c.headline, summary: c.summary,
-    wolf_reasoning: c.wolf_reasoning,
+    wolf_reasoning: c.wolf_reasoning, personal_bio: c.personal_bio ?? '',
     flags: c.flags ?? [], strengths: c.strengths ?? [],
     risks: c.risks ?? [], interview_questions: c.interview_questions ?? [],
     jobId,
@@ -370,6 +370,7 @@ export default function App() {
         headline: res.headline ?? '',
         summary: res.summary ?? '',
         wolf_reasoning: res.wolf_reasoning ?? '',
+        personal_bio: res.personal_bio ?? '',
         flags: res.flags ?? [],
         interview_questions: res.interview_questions ?? [],
         strengths: res.strengths ?? [],
@@ -380,7 +381,7 @@ export default function App() {
 
       const cand: Candidate = saved
         ? mapCandidate(saved, jobId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], jobId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], jobId }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
         ...j, candidates: j.candidates.map(c => c.id === tempId ? cand : c),
@@ -517,13 +518,14 @@ export default function App() {
         wolf: wLabel, wolf_sec: wSecLabel, verdict,
         headline: res.headline ?? '', summary: res.summary ?? '',
         wolf_reasoning: res.wolf_reasoning ?? '',
+        personal_bio: res.personal_bio ?? '',
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
         strengths: res.strengths ?? [], risks: res.risks ?? [],
       }).select().single()
       if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -677,6 +679,13 @@ export default function App() {
             <div className={`cp-verdict-tag ${vTag}`}>{c.verdict}</div>
           </div>
         </div>
+
+        {c.personal_bio && (
+          <div style={{ margin: '0 24px 0', padding: '18px 22px', background: 'var(--s2)', borderRadius: 12, border: '1px solid var(--b1)', borderLeft: '3px solid var(--accent)' }}>
+            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Om personen</div>
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.75, fontWeight: 300 }}>{c.personal_bio}</p>
+          </div>
+        )}
 
         <div className="cp-grid">
           <div className="cp-col">
