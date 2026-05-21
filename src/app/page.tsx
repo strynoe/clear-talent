@@ -17,9 +17,22 @@ interface Candidate {
 interface Job {
   id: number; title: string; dept: string; type: string
   wolf1: string; wolf2: string; status: 'active' | 'paused'; candidates: Candidate[]
+  team_id?: number | null; description?: string
+}
+interface Employee {
+  id: number; name: string; score: number; wolf: string; wolfSec: string
+  grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
+  wolf_reasoning: string; flags: Flag[]; interview_questions: string[]
+  strengths: string[]; risks: string[]; teamId: number
+  _loading?: boolean; _error?: string
+}
+interface Team { id: number; name: string; description: string; employees: Employee[] }
+interface Recommendation {
+  recommended_type: string; reasoning: string; gap_analysis: string
+  team_strengths?: string; interview_focus?: string[]
 }
 interface QueueItem { id: number; type: 'file' | 'linkedin' | 'text'; name: string; file?: File; content?: string }
-type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile'
+type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-detail' | 'employee-profile'
 
 // ─── Constants ───────────────────────────────────────────
 const WOLVES: Record<string, { label: string }> = {
@@ -173,6 +186,19 @@ function CandCard({ c, onClick }: { c: Candidate; onClick: () => void }) {
 // ─── Main app ────────────────────────────────────────────
 // ── DB helpers ───────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapEmployee(e: any, teamId: number): Employee {
+  return {
+    id: e.id, name: e.name, score: e.score,
+    wolf: e.wolf, wolfSec: e.wolf_sec, grad: e.grad,
+    bars: e.bars ?? [], verdict: e.verdict,
+    headline: e.headline, summary: e.summary,
+    wolf_reasoning: e.wolf_reasoning,
+    flags: e.flags ?? [], strengths: e.strengths ?? [],
+    risks: e.risks ?? [], interview_questions: e.interview_questions ?? [],
+    teamId,
+  }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapCandidate(c: any, jobId: number): Candidate {
   return {
     id: c.id, name: c.name, score: c.score,
@@ -221,6 +247,23 @@ export default function App() {
   const [mcDrag, setMcDrag] = useState(false)
   const [mcSubmitting, setMcSubmitting] = useState(false)
 
+  // Teams
+  const [teams, setTeams] = useState<Team[]>([])
+  const [currentTeamId, setCurrentTeamId] = useState<number | null>(null)
+  const [currentEmployeeId, setCurrentEmployeeId] = useState<number | null>(null)
+  const [modalTeamOpen, setModalTeamOpen] = useState(false)
+  const [modalEmpOpen, setModalEmpOpen] = useState(false)
+  const [teamName, setTeamName] = useState('')
+  const [teamDesc, setTeamDesc] = useState('')
+  const [teamNameErr, setTeamNameErr] = useState(false)
+  const [empName, setEmpName] = useState('')
+  const [empFile, setEmpFile] = useState<File | null>(null)
+  const [empText, setEmpText] = useState('')
+  const [empLinkedin, setEmpLinkedin] = useState('')
+  const [empSubmitting, setEmpSubmitting] = useState(false)
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(null)
+  const [recLoading, setRecLoading] = useState(false)
+
   // CV analysis page
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [cvText, setCvText] = useState('')
@@ -253,11 +296,33 @@ export default function App() {
   // Esc closes modals
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setModalJobOpen(false); setModalCandOpen(false) }
+      if (e.key === 'Escape') {
+        setModalJobOpen(false); setModalCandOpen(false)
+        setModalTeamOpen(false); setModalEmpOpen(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // ── Load teams from Supabase ──
+  const loadTeams = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('teams')
+      .select('*, employees(*)')
+      .order('created_at', { ascending: false })
+    if (error) { console.error('[loadTeams]', error.message); return }
+    if (data) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setTeams(data.map((t: any) => ({
+        id: t.id, name: t.name, description: t.description,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        employees: (t.employees ?? []).map((e: any) => mapEmployee(e, t.id)),
+      })))
+    }
+  }, [supabase])
+
+  useEffect(() => { loadTeams() }, [loadTeams])
 
   // ── Upload to Supabase (fire & forget) ──
   function uploadToSupabase(file: File, candidateName?: string, jobId?: number | null) {
@@ -332,12 +397,16 @@ export default function App() {
   // ── Navigation ──
   const currentJob = jobs.find(j => j.id === currentJobId) ?? null
   const currentCand = currentJob?.candidates.find(c => c.id === currentCandId) ?? null
+  const currentTeam = teams.find(t => t.id === currentTeamId) ?? null
+  const currentEmployee = currentTeam?.employees.find(e => e.id === currentEmployeeId) ?? null
 
   function showJobs() { setPage('jobs'); setCurrentJobId(null); setCurrentCandId(null) }
   function openJob(id: number) { setCurrentJobId(id); setPage('job-detail'); setCurrentCandId(null) }
   function openCandidateProfile(candId: number) { setCurrentCandId(candId); setPage('cand-profile') }
   function goBack() {
     if (page === 'cand-profile' && currentCandId && currentJobId) { openJob(currentJobId); return }
+    if (page === 'employee-profile' && currentEmployeeId && currentTeamId) { openTeam(currentTeamId); return }
+    if (page === 'team-detail') { showTeams(); return }
     showJobs()
   }
   function navCv() { setPage('cv'); setCurrentJobId(null); setCurrentCandId(null) }
@@ -355,6 +424,94 @@ export default function App() {
     setModalJobOpen(false)
     setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobWolf1(''); setJobWolf2(''); setJobTitleErr(false)
     openJob(j.id)
+  }
+
+  // ── Teams ──
+  function showTeams() { setPage('teams'); setCurrentTeamId(null); setCurrentEmployeeId(null); setRecommendation(null) }
+  function openTeam(id: number) { setCurrentTeamId(id); setPage('team-detail'); setCurrentEmployeeId(null); setRecommendation(null) }
+  function openEmployeeProfile(empId: number) { setCurrentEmployeeId(empId); setPage('employee-profile') }
+
+  async function createTeam() {
+    if (!teamName.trim()) { setTeamNameErr(true); return }
+    const { data, error } = await supabase.from('teams').insert({
+      name: teamName.trim(), description: teamDesc.trim(),
+    }).select().single()
+    if (error) { console.error('[createTeam]', error.message); return }
+    const t: Team = { ...data, employees: [] }
+    setTeams(prev => [t, ...prev])
+    setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false)
+    openTeam(t.id)
+  }
+
+  function openEmpModal() { setEmpName(''); setEmpFile(null); setEmpText(''); setEmpLinkedin(''); setModalEmpOpen(true) }
+
+  async function submitEmpModal() {
+    if (!empText && !empFile && !empLinkedin) { alert('Tilføj et CV, tekst eller LinkedIn URL.'); return }
+    setEmpSubmitting(true)
+    let content = '', name = empName.trim() || 'Medarbejder'
+    if (empFile) {
+      uploadToSupabase(empFile, name)
+      try { content = await readFileText(empFile) } catch { content = '' }
+    } else if (empText) { content = empText
+    } else if (empLinkedin) { content = 'LinkedIn: ' + empLinkedin; if (!empName.trim()) name = nameFromUrl(empLinkedin) }
+    setModalEmpOpen(false); setEmpSubmitting(false)
+    await analyzeAndAddToTeam(content, name, currentTeamId!)
+  }
+
+  async function analyzeAndAddToTeam(content: string, name: string, teamId: number) {
+    const tempId = -(Date.now() + Math.random())
+    const grad = GRADS[analysisCount.current++ % GRADS.length]
+    setTeams(prev => prev.map(t => t.id !== teamId ? t : {
+      ...t, employees: [...t.employees, { id: tempId, name, _loading: true } as Employee],
+    }))
+    try {
+      const res = await callAnalyze(content, name)
+      const wLabel = WOLVES[(res.wolf_primary ?? 'explorer').toLowerCase()]?.label ?? 'Type 8'
+      const wSecLabel = WOLVES[(res.wolf_secondary ?? '').toLowerCase()]?.label ?? ''
+      const score = res.score ?? rnd(50, 90)
+      const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
+      const verdict = verdictFromScore(score)
+      const { data: saved, error: dbErr } = await supabase.from('employees').insert({
+        team_id: teamId, name, score, grad, bars,
+        wolf: wLabel, wolf_sec: wSecLabel, verdict,
+        headline: res.headline ?? '', summary: res.summary ?? '',
+        wolf_reasoning: res.wolf_reasoning ?? '',
+        flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
+        strengths: res.strengths ?? [], risks: res.risks ?? [],
+      }).select().single()
+      if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
+      const emp: Employee = saved
+        ? mapEmployee(saved, teamId)
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
+      setTeams(prev => prev.map(t => t.id !== teamId ? t : {
+        ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
+      }))
+    } catch (err) {
+      setTeams(prev => prev.map(t => t.id !== teamId ? t : {
+        ...t, employees: t.employees.map(e =>
+          e.id === tempId ? { ...e, _loading: false, _error: err instanceof Error ? err.message : 'Fejl' } : e
+        ),
+      }))
+    }
+  }
+
+  async function getRecommendation(teamId: number, description: string) {
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return
+    setRecLoading(true); setRecommendation(null)
+    try {
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employees: team.employees.filter(e => !e._loading && !e._error).map(e => ({ name: e.name, wolf: e.wolf, wolfSec: e.wolfSec })),
+          description, teamName: team.name,
+        }),
+      })
+      const data = await res.json()
+      setRecommendation(data)
+    } catch (err) { console.error('[recommend]', err) }
+    setRecLoading(false)
   }
 
   // ── Candidate modal ──
@@ -439,6 +596,17 @@ export default function App() {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showJobs}>Åbne stillinger</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openJob(currentJobId!)}>{currentJob.title}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentCand.name}</span></>)
     topbarActions = <button className="tb-btn tb-btn-ghost" onClick={() => openJob(currentJobId!)}>← Tilbage til stilling</button>
+  } else if (page === 'teams') {
+    breadcrumb = <span className="tb-crumb active">Teams</span>
+    topbarActions = <button className="tb-btn tb-btn-primary" onClick={() => setModalTeamOpen(true)}>+ Opret team</button>
+  } else if (page === 'team-detail' && currentTeam) {
+    backHidden = false
+    breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentTeam.name}</span></>)
+    topbarActions = <button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button>
+  } else if (page === 'employee-profile' && currentEmployee && currentTeam) {
+    backHidden = false
+    breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openTeam(currentTeamId!)}>{currentTeam.name}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentEmployee.name}</span></>)
+    topbarActions = <button className="tb-btn tb-btn-ghost" onClick={() => openTeam(currentTeamId!)}>← Tilbage til team</button>
   }
 
   // ── Candidate profile helpers ──
@@ -539,7 +707,15 @@ export default function App() {
             <span className="sb-pip" /><span className="sb-ico">📄</span>CV Analyse<span className="sb-tag">AI</span>
           </div>
           <div className="sb-sec">Organisation</div>
-          <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">⬡</span>Teams<span className="sb-tag">Snart</span></div>
+          <div className={`sb-item${page === 'teams' || page === 'team-detail' || page === 'employee-profile' ? (page === 'teams' ? ' active' : '') : ''}`} onClick={showTeams}>
+            <span className="sb-pip" /><span className="sb-ico">⬡</span>Teams
+          </div>
+          {teams.map(t => (
+            <div key={t.id} className={`sb-job${currentTeamId === t.id && (page === 'team-detail' || page === 'employee-profile') ? ' active' : ''}`} onClick={() => openTeam(t.id)}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{t.name}</span>
+              <span className="sb-job-count">{t.employees.filter(e => !e._loading && !e._error).length}</span>
+            </div>
+          ))}
           <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
         </div>
         <div className="sb-bottom">
@@ -777,6 +953,72 @@ export default function App() {
         <div className={`page${page === 'cand-profile' ? ' active' : ''}`} id="page-cand-profile">
           {currentCand && currentJob && renderCandProfile(currentCand, currentJob)}
         </div>
+
+        {/* ── TEAMS OVERSIGT ── */}
+        <div className={`page${page === 'teams' ? ' active' : ''}`} id="page-teams">
+          <div className="jobs-wrap">
+            {teams.length === 0 ? (
+              <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--m2)', fontSize: 13 }}>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>⬡</div>
+                <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontWeight: 700, color: 'var(--m1)', marginBottom: 6 }}>Ingen teams endnu</div>
+                <div>Opret et team for at komme i gang</div>
+              </div>
+            ) : (
+              <div className="jobs-grid">
+                {teams.map(t => (
+                  <div key={t.id} className="job-card" onClick={() => openTeam(t.id)}>
+                    <div className="jc-header">
+                      <div className="jc-title">{t.name}</div>
+                      {t.description && <div className="jc-dept">{t.description}</div>}
+                    </div>
+                    <div className="jc-body">
+                      <div className="jc-meta-row">
+                        <div className="jc-meta"><div className="jc-meta-label">Medarbejdere</div><div className="jc-meta-val">{t.employees.filter(e => !e._loading && !e._error).length}</div></div>
+                      </div>
+                      <div className="jc-wolf-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                        {[...new Set(t.employees.filter(e => !e._loading && e.wolf).map(e => e.wolf))].map(w => (
+                          <div key={w} className="wolf-inline"><div className="wolf-dot" style={{ background: wColor(w) }} /><span className="wolf-name">{w}</span></div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="jc-footer">
+                      <span style={{ fontSize: 11, color: 'var(--m2)' }}>Se team →</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── TEAM DETALJE ── */}
+        <div className={`page${page === 'team-detail' ? ' active' : ''}`} id="page-team-detail">
+          {currentTeam && (
+            <div className="jobs-wrap">
+              {currentTeam.description && (
+                <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--s1)', borderRadius: 10, border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
+                  {currentTeam.description}
+                </div>
+              )}
+              {currentTeam.employees.length === 0 ? (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--m2)', fontSize: 13 }}>
+                  <div>Ingen medarbejdere endnu — tilføj den første</div>
+                </div>
+              ) : (
+                <div className="jobs-grid">
+                  {currentTeam.employees.map(e => (
+                    <CandCard key={e.id} c={{ ...e, jobId: e.teamId }} onClick={() => openEmployeeProfile(e.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── MEDARBEJDER PROFIL ── */}
+        <div className={`page${page === 'employee-profile' ? ' active' : ''}`} id="page-employee-profile">
+          {currentEmployee && currentTeam && renderCandProfile({ ...currentEmployee, jobId: currentEmployee.teamId }, { id: currentTeam.id, title: currentTeam.name, dept: '', type: '', wolf1: '', wolf2: '', status: 'active', candidates: [] })}
+        </div>
       </div>
 
       {/* ── MODAL: OPRET STILLING ── */}
@@ -811,24 +1053,107 @@ export default function App() {
             </div>
             <div className="modal-row">
               <div className="modal-field">
-                <div className="modal-label">Primær wolf-type</div>
+                <div className="modal-label">Primær type</div>
                 <select className="modal-select" value={jobWolf1} onChange={e => setJobWolf1(e.target.value)}>
                   <option value="">Vælg type</option>
                   {Object.values(WOLVES).map(w => <option key={w.label}>{w.label}</option>)}
                 </select>
               </div>
               <div className="modal-field">
-                <div className="modal-label">Sekundær wolf-type</div>
+                <div className="modal-label">Sekundær type</div>
                 <select className="modal-select" value={jobWolf2} onChange={e => setJobWolf2(e.target.value)}>
                   <option value="">Valgfri</option>
                   {Object.values(WOLVES).map(w => <option key={w.label}>{w.label}</option>)}
                 </select>
               </div>
             </div>
+            {teams.length > 0 && (
+              <div className="modal-row">
+                <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                  <div className="modal-label">Tilknyt team (valgfrit)</div>
+                  <select className="modal-select" value={jobWolf1 ? undefined : ''} onChange={e => {
+                    const teamId = Number(e.target.value)
+                    setJobs(prev => prev) // trigger re-render
+                    if (teamId) getRecommendation(teamId, '')
+                  }}>
+                    <option value="">Ingen — standalone stilling</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
           <div className="modal-footer">
             <button className="modal-btn modal-btn-ghost" onClick={() => setModalJobOpen(false)}>Annuller</button>
             <button className="modal-btn modal-btn-create" onClick={createJob}>Opret stilling →</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODAL: OPRET TEAM ── */}
+      <div className={`modal-backdrop${modalTeamOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setModalTeamOpen(false) }}>
+        <div className="modal">
+          <div className="modal-header">
+            <div className="modal-title">Opret team</div>
+            <div className="modal-close" onClick={() => setModalTeamOpen(false)}>✕</div>
+          </div>
+          <div className="modal-body">
+            <div className="modal-field">
+              <div className="modal-label">Teamnavn / Afdeling</div>
+              <input
+                className="modal-input" placeholder="fx Salg, Marketing, Udvikling"
+                value={teamName} onChange={e => { setTeamName(e.target.value); setTeamNameErr(false) }}
+                style={teamNameErr ? { borderColor: 'var(--danger)' } : {}}
+              />
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">Beskrivelse (valgfrit)</div>
+              <textarea className="modal-textarea" rows={3} placeholder="Hvad laver dette team?" value={teamDesc} onChange={e => setTeamDesc(e.target.value)} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="modal-btn modal-btn-ghost" onClick={() => setModalTeamOpen(false)}>Annuller</button>
+            <button className="modal-btn modal-btn-create" onClick={createTeam}>Opret team →</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODAL: TILFØJ MEDARBEJDER ── */}
+      <div className={`modal-backdrop${modalEmpOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setModalEmpOpen(false) }}>
+        <div className="modal">
+          <div className="modal-header">
+            <div className="modal-title">Tilføj medarbejder{currentTeam ? ` — ${currentTeam.name}` : ''}</div>
+            <div className="modal-close" onClick={() => setModalEmpOpen(false)}>✕</div>
+          </div>
+          <div className="modal-body">
+            <div className="modal-field">
+              <div className="modal-label">Medarbejderens navn (valgfrit)</div>
+              <input className="modal-input" placeholder="Fornavn Efternavn" value={empName} onChange={e => setEmpName(e.target.value)} />
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">Upload CV</div>
+              <div className="modal-upload" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setEmpFile(f) }}>
+                <input type="file" accept=".pdf,.txt,.doc,.docx" onChange={e => { const f = e.target.files?.[0]; if (f) setEmpFile(f) }} />
+                <div className="mu-icon">📄</div>
+                <div className="mu-title">{empFile ? empFile.name : 'Klik eller træk fil hertil'}</div>
+                <div className="mu-sub">{empFile ? `${(empFile.size / 1024).toFixed(0)} KB` : 'PDF, TXT eller DOCX'}</div>
+              </div>
+            </div>
+            <div className="or-line">eller</div>
+            <div className="modal-field">
+              <div className="modal-label">Indsæt CV / profil som tekst</div>
+              <textarea className="modal-textarea" rows={4} placeholder="Sæt CV-tekst ind her..." value={empText} onChange={e => setEmpText(e.target.value)} />
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">LinkedIn URL</div>
+              <input className="modal-input" placeholder="https://linkedin.com/in/navn" value={empLinkedin} onChange={e => setEmpLinkedin(e.target.value)} />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="modal-btn modal-btn-ghost" onClick={() => setModalEmpOpen(false)}>Annuller</button>
+            <button className="modal-btn modal-btn-create" disabled={empSubmitting} onClick={submitEmpModal}>
+              {empSubmitting ? 'Analyserer...' : 'Analysér og tilføj →'}
+            </button>
           </div>
         </div>
       </div>
