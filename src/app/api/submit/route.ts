@@ -101,7 +101,10 @@ const GRADS = [
 ]
 
 function sbHeaders() {
-  const key = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  // Service role key bypasses RLS — required for public form submissions
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ?? process.env.SUPABASE_ANON_KEY
+    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   return {
     'Content-Type': 'application/json',
     'apikey': key,

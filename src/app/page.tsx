@@ -222,6 +222,7 @@ export default function App() {
     router.refresh()
   }
 
+  const [orgId, setOrgId] = useState<number | null>(null)
   const [page, setPage] = useState<Page>('jobs')
   const [jobs, setJobs] = useState<Job[]>(initialJobs)
   const [currentJobId, setCurrentJobId] = useState<number | null>(null)
@@ -272,6 +273,38 @@ export default function App() {
   const [cvResults, setCvResults] = useState<Array<{ id: number; loading?: boolean; error?: string; name: string; score: number; wolf: string; wolfSec: string; grad: string; headline: string; flags: Flag[] }>>([])
   const [cvDrag, setCvDrag] = useState(false)
   const analysisCount = useRef(0)
+
+  // ── Load or create organisation ──
+  const loadOrCreateOrg = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Check existing membership
+    const { data: membership } = await supabase
+      .from('org_members')
+      .select('org_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (membership?.org_id) {
+      setOrgId(membership.org_id)
+      return
+    }
+
+    // First login — create org automatically
+    const orgName = user.email?.split('@')[0] ?? 'Min organisation'
+    const { data: org, error: orgErr } = await supabase
+      .from('organizations')
+      .insert({ name: orgName })
+      .select()
+      .single()
+    if (orgErr || !org) { console.error('[loadOrCreateOrg]', orgErr); return }
+
+    await supabase.from('org_members').insert({ org_id: org.id, user_id: user.id, role: 'owner' })
+    setOrgId(org.id)
+  }, [supabase])
+
+  useEffect(() => { loadOrCreateOrg() }, [loadOrCreateOrg])
 
   // ── Load jobs from Supabase on mount ──
   const loadJobs = useCallback(async () => {
@@ -418,6 +451,7 @@ export default function App() {
     const { data, error } = await supabase.from('jobs').insert({
       title: jobTitle.trim(), dept: jobDept.trim() || 'Generel',
       type: jobType, wolf1: jobWolf1 || 'Explorer', wolf2: jobWolf2, status: 'active',
+      org_id: orgId,
     }).select().single()
     if (error) { console.error('[createJob]', error.code, error.message, error.details, error.hint); return }
     const j: Job = { ...data, candidates: [] }
@@ -475,6 +509,7 @@ export default function App() {
     try {
       const { data, error } = await supabase.from('teams').insert({
         name: teamName.trim(), description: teamDesc.trim(),
+        org_id: orgId,
       }).select().single()
       console.log('[createTeam] result:', { data, error })
       if (error) {
