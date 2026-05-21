@@ -162,7 +162,6 @@ Returnér KUN valid JSON uden markdown:
 
     const record = {
       name: name.trim(), score, grad, bars, verdict,
-      wolf: '', wolf_sec: '', wolf_reasoning: '',
       headline: result.headline ?? '',
       summary: result.summary ?? '',
       personal_bio: result.personal_bio ?? '',

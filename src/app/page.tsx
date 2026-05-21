@@ -14,21 +14,21 @@ interface Typology {
   collab_strengths: string[]; collab_risks: string[]
 }
 interface Candidate extends Typology {
-  id: number; name: string; score: number; wolf: string; wolfSec: string
+  id: number; name: string; score: number
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
+  personal_bio: string; flags: Flag[]; interview_questions: string[]
   strengths: string[]; risks: string[]; jobId: number
   _loading?: boolean; _error?: string
 }
 interface Job {
   id: number; title: string; dept: string; type: string
-  wolf1: string; wolf2: string; status: 'active' | 'paused'; candidates: Candidate[]
+  status: 'active' | 'paused'; candidates: Candidate[]
   team_id?: number | null; description?: string
 }
 interface Employee extends Typology {
-  id: number; name: string; score: number; wolf: string; wolfSec: string
+  id: number; name: string; score: number
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  wolf_reasoning: string; personal_bio: string; flags: Flag[]; interview_questions: string[]
+  personal_bio: string; flags: Flag[]; interview_questions: string[]
   strengths: string[]; risks: string[]; teamId: number
   _loading?: boolean; _error?: string
 }
@@ -42,11 +42,7 @@ type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-deta
 
 interface Member { user_id: string; email: string; role: 'owner' | 'member'; status: 'pending' | 'active'; created_at: string }
 
-// ─── Constants ───────────────────────────────────────────
-// Personlighedstype-systemet er fjernet — bygges op fra bunden.
-// Disse er tomme placeholders så UI'en stadig kan rendere.
-const WOLVES: Record<string, { label: string }> = {}
-const WOLF_COLORS: Record<string, string> = {}
+// (Det tidligere 8-type-system er fjernet helt — MBTI + Enneagram er den nye teori)
 const GRADS = [
   'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
   'linear-gradient(135deg,#8a3a6a,#aa5a8a)', 'linear-gradient(135deg,#3a5a8a,#5a7aaa)',
@@ -61,7 +57,6 @@ const vbarCls     = (v: string) => v === 'Anbefalet' ? 'vbar-ok' : v === 'Forsig
 const vtxtCls     = (v: string) => v === 'Anbefalet' ? 'vtxt-ok' : v === 'Forsigtighed' ? 'vtxt-warn' : 'vtxt-bad'
 const barCls      = (v: number) => v >= 75 ? 'bf-g' : v >= 55 ? 'bf-b' : v >= 38 ? 'bf-w' : 'bf-d'
 const valCls      = (v: number) => v < 38 ? 'v-bad' : v < 55 ? 'v-warn' : ''
-const wColor      = (name: string) => WOLF_COLORS[name] ?? '#7a7570'
 const rnd         = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
 const shuffle     = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
 const initials    = (name: string) => name.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase()
@@ -82,14 +77,14 @@ function readFileText(file: File): Promise<string> {
 const ALL_METRICS = ['Initiativ','Kommunikation','Samarbejde','Struktur','Analytisk tænkning','Fremdrift','Empati','Tilpasningsevne','Beslutningsevne','Stresshåndtering']
 
 function makeFakeCandidate(
-  overrides: Partial<Candidate> & { name: string; score: number; wolf: string; wolfSec: string; headline: string },
+  overrides: Partial<Candidate> & { name: string; score: number; headline: string },
   grad: string, jobId: number, id: number
 ): Candidate {
   const bars = shuffle(ALL_METRICS).slice(0, 3).map(l => ({ l, v: rnd(30, 97) }))
   return {
     id, jobId, grad, bars,
     verdict: verdictFromScore(overrides.score),
-    summary: '', wolf_reasoning: '', flags: [], interview_questions: [], strengths: [], risks: [],
+    summary: '', flags: [], interview_questions: [], strengths: [], risks: [],
     mbti: '', enneagram: '', typology_summary: '', detailed_explanation: '',
     typology_strengths: [], typology_weaknesses: [],
     collab_strengths: [], collab_risks: [],
@@ -101,11 +96,6 @@ function makeFakeCandidate(
 const initialJobs: Job[] = []
 
 // ─── Small components ────────────────────────────────────
-function WolfDots(_props: { wolf: string; wolfSec?: string }) {
-  // Type-system fjernet — komponent beholdt som placeholder så UI-strukturen er intakt
-  return null
-}
-
 function TypologyExplainer({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
@@ -221,10 +211,10 @@ function CandCard({ c, onClick }: { c: Candidate; onClick: () => void }) {
 function mapEmployee(e: any, teamId: number): Employee {
   return {
     id: e.id, name: e.name, score: e.score,
-    wolf: e.wolf, wolfSec: e.wolf_sec, grad: e.grad,
+    grad: e.grad,
     bars: e.bars ?? [], verdict: e.verdict,
     headline: e.headline, summary: e.summary,
-    wolf_reasoning: e.wolf_reasoning ?? '', personal_bio: e.personal_bio ?? '',
+    personal_bio: e.personal_bio ?? '',
     mbti: e.mbti ?? '', enneagram: e.enneagram ?? '',
     typology_summary: e.typology_summary ?? '',
     detailed_explanation: e.detailed_explanation ?? '',
@@ -241,10 +231,10 @@ function mapEmployee(e: any, teamId: number): Employee {
 function mapCandidate(c: any, jobId: number): Candidate {
   return {
     id: c.id, name: c.name, score: c.score,
-    wolf: c.wolf, wolfSec: c.wolf_sec, grad: c.grad,
+    grad: c.grad,
     bars: c.bars ?? [], verdict: c.verdict,
     headline: c.headline, summary: c.summary,
-    wolf_reasoning: c.wolf_reasoning ?? '', personal_bio: c.personal_bio ?? '',
+    personal_bio: c.personal_bio ?? '',
     mbti: c.mbti ?? '', enneagram: c.enneagram ?? '',
     typology_summary: c.typology_summary ?? '',
     detailed_explanation: c.detailed_explanation ?? '',
@@ -288,7 +278,7 @@ export default function App() {
   const [jobTitle, setJobTitle] = useState('')
   const [jobDept, setJobDept] = useState('')
   const [jobType, setJobType] = useState('Fuldtid')
-  // jobWolf1/jobWolf2 fjernet — erstattes med ny teori senere
+  // (Tidligere wolf-felter fjernet — MBTI + Enneagram nu)
   const [jobTitleErr, setJobTitleErr] = useState(false)
 
   // Candidate modal form
@@ -321,7 +311,7 @@ export default function App() {
   const [cvText, setCvText] = useState('')
   const [linkedinVal, setLinkedinVal] = useState('')
   const [nameVal, setNameVal] = useState('')
-  const [cvResults, setCvResults] = useState<Array<{ id: number; loading?: boolean; error?: string; name: string; score: number; wolf: string; wolfSec: string; grad: string; headline: string; flags: Flag[] }>>([])
+  const [cvResults, setCvResults] = useState<Array<{ id: number; loading?: boolean; error?: string; name: string; score: number; mbti: string; enneagram: string; grad: string; headline: string; flags: Flag[] }>>([])
   const [cvDrag, setCvDrag] = useState(false)
   const analysisCount = useRef(0)
 
@@ -397,7 +387,7 @@ export default function App() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setJobs(data.map((j: any) => ({
         id: j.id, title: j.title, dept: j.dept, type: j.type,
-        wolf1: j.wolf1, wolf2: j.wolf2, status: j.status,
+        status: j.status,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         candidates: (j.candidates ?? []).map((c: any) => mapCandidate(c, j.id)),
       })))
@@ -489,8 +479,7 @@ export default function App() {
       const verdict = verdictFromScore(score)
 
       const { data: saved, error: dbErr } = await supabase.from('candidates').insert({
-        job_id: jobId, name, score, grad, bars,
-        wolf: '', wolf_sec: '', wolf_reasoning: '', verdict,
+        job_id: jobId, name, score, grad, bars, verdict,
         headline: res.headline ?? '',
         summary: res.summary ?? '',
         personal_bio: res.personal_bio ?? '',
@@ -512,7 +501,7 @@ export default function App() {
 
       const cand: Candidate = saved
         ? mapCandidate(saved, jobId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], jobId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], jobId }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
         ...j, candidates: j.candidates.map(c => c.id === tempId ? cand : c),
@@ -550,7 +539,7 @@ export default function App() {
     if (!orgId) { alert('Vent venligst — organisationen indlæses...'); return }
     const { data, error } = await supabase.from('jobs').insert({
       title: jobTitle.trim(), dept: jobDept.trim() || 'Generel',
-      type: jobType, wolf1: '', wolf2: '', status: 'active',
+      type: jobType, status: 'active',
       org_id: orgId,
     }).select().single()
     if (error) { console.error('[createJob]', error.code, error.message, error.details, error.hint); return }
@@ -658,8 +647,7 @@ export default function App() {
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
       const { data: saved, error: dbErr } = await supabase.from('employees').insert({
-        team_id: teamId, name, score, grad, bars,
-        wolf: '', wolf_sec: '', wolf_reasoning: '', verdict,
+        team_id: teamId, name, score, grad, bars, verdict,
         headline: res.headline ?? '', summary: res.summary ?? '',
         personal_bio: res.personal_bio ?? '',
         mbti: res.mbti ?? '',
@@ -677,7 +665,7 @@ export default function App() {
       if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -699,7 +687,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employees: team.employees.filter(e => !e._loading && !e._error).map(e => ({ name: e.name, wolf: e.wolf, wolfSec: e.wolfSec })),
+          employees: team.employees.filter(e => !e._loading && !e._error).map(e => ({ name: e.name, mbti: e.mbti, enneagram: e.enneagram })),
           description, teamName: team.name,
         }),
       })
@@ -750,7 +738,7 @@ export default function App() {
   async function analyzeForCvPage(item: QueueItem) {
     const tempId = Date.now() + Math.random()
     const grad = GRADS[analysisCount.current++ % GRADS.length]
-    setCvResults(prev => [...prev, { id: tempId, loading: true, name: item.name, score: 0, wolf: '', wolfSec: '', grad, headline: '', flags: [] }])
+    setCvResults(prev => [...prev, { id: tempId, loading: true, name: item.name, score: 0, mbti: '', enneagram: '', grad, headline: '', flags: [] }])
     try {
       let content = ''
       if (item.type === 'file' && item.file) {
@@ -764,7 +752,7 @@ export default function App() {
       const name = item.type === 'linkedin' ? nameFromUrl(item.name) : item.name
       const res = await callAnalyze(content, name)
       setCvResults(prev => prev.map(r => r.id !== tempId ? r : {
-        id: tempId, name, score: res.score ?? 0, wolf: '', wolfSec: '',
+        id: tempId, name, score: res.score ?? 0, mbti: res.mbti ?? '', enneagram: res.enneagram ?? '',
         grad, headline: res.headline ?? '', flags: (res.flags ?? []).slice(0, 2),
       }))
     } catch (err) {
@@ -1125,7 +1113,7 @@ export default function App() {
                       <div className="jc-meta"><div className="jc-meta-label">Ansættelse</div><div className="jc-meta-val">{j.type}</div></div>
                       <div className="jc-meta"><div className="jc-meta-label">Kandidater</div><div className="jc-meta-val">{j.candidates.length}</div></div>
                     </div>
-                    {/* Job wolf-row fjernet — bygges når ny teori er klar */}
+                    {/* Job typeprofil — bygges når ny teori er klar */}
                   </div>
                   <div className="jc-footer">
                     <span className="jc-cand-count"><span>{j.candidates.length}</span> kandidat{j.candidates.length === 1 ? '' : 'er'}</span>
@@ -1289,7 +1277,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="rr-foot">
-                      <div className="rr-wolves"><WolfDots wolf={r.wolf} wolfSec={r.wolfSec} /></div>
+                      <div />
                       <div className="rr-flags">
                         {r.flags.length ? r.flags.map((f, i) => {
                           const cls = f.severity === 'red' ? 'red' : f.severity === 'ok' ? 'ok' : 'warn'
@@ -1331,7 +1319,7 @@ export default function App() {
                       <div className="jc-meta-row">
                         <div className="jc-meta"><div className="jc-meta-label">Medarbejdere</div><div className="jc-meta-val">{t.employees.filter(e => !e._loading && !e._error).length}</div></div>
                       </div>
-                      <div className="jc-wolf-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         {[...new Set(t.employees.filter(e => !e._loading && e.mbti).map(e => e.mbti))].slice(0, 6).map(m => (
                           <span key={m} style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: 'var(--ink)' }}>{m}</span>
                         ))}
@@ -1373,7 +1361,7 @@ export default function App() {
 
         {/* ── MEDARBEJDER PROFIL ── */}
         <div className={`page${page === 'employee-profile' ? ' active' : ''}`} id="page-employee-profile">
-          {currentEmployee && currentTeam && renderCandProfile({ ...currentEmployee, jobId: currentEmployee.teamId }, { id: currentTeam.id, title: currentTeam.name, dept: '', type: '', wolf1: '', wolf2: '', status: 'active', candidates: [] })}
+          {currentEmployee && currentTeam && renderCandProfile({ ...currentEmployee, jobId: currentEmployee.teamId }, { id: currentTeam.id, title: currentTeam.name, dept: '', type: '', status: 'active', candidates: [] })}
         </div>
 
         {/* ── MEDLEMMER ── */}
