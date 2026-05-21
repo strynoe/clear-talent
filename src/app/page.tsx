@@ -1246,7 +1246,7 @@ export default function App() {
                   {members.filter(m => m.status === 'pending').map(m => (
                     <div key={m.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 10, padding: '14px 18px' }}>
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{m.email}</div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{m.email || '(uden email)'}</div>
                         <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 2 }}>Anmodet {new Date(m.created_at).toLocaleDateString('da-DK')}</div>
                       </div>
                       {orgRole === 'owner' && (
@@ -1271,11 +1271,11 @@ export default function App() {
                   <div key={m.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 10, padding: '14px 18px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--s2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: 'var(--m1)' }}>
-                        {(m.email[0] ?? '?').toUpperCase()}
+                        {(m.email?.[0] ?? '?').toUpperCase()}
                       </div>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
-                          {m.email} {m.user_id === currentUserId && <span style={{ fontSize: 11, color: 'var(--m2)', fontWeight: 400 }}>(dig)</span>}
+                          {m.email || '(uden email)'} {m.user_id === currentUserId && <span style={{ fontSize: 11, color: 'var(--m2)', fontWeight: 400 }}>(dig)</span>}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 2, textTransform: 'capitalize' }}>{m.role === 'owner' ? 'Ejer' : 'Medlem'}</div>
                       </div>
