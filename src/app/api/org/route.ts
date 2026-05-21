@@ -1,4 +1,6 @@
-// Server-side org lookup/creation using service role key — bypasses RLS entirely
+// GET /api/org — returnerer brugerens nuværende org-status
+// Returnerer: { org_id, org_name, role, status } eller { status: 'none' }
+// Opretter IKKE længere org automatisk — det sker via /api/join-org med kode
 
 export async function GET(request: Request) {
   try {
@@ -15,7 +17,7 @@ export async function GET(request: Request) {
       'Authorization': `Bearer ${service}`,
     }
 
-    // 1. Verify the user token
+    // 1. Verificér token
     const userRes = await fetch(`${base}/auth/v1/user`, {
       headers: { 'apikey': anon, 'Authorization': `Bearer ${userToken}` },
     })
@@ -23,38 +25,32 @@ export async function GET(request: Request) {
     const user = await userRes.json()
     if (!user?.id) return Response.json({ error: 'No user id' }, { status: 401 })
 
-    // 2. Check for existing org membership
+    // 2. Find medlemskab
     const memRes = await fetch(
-      `${base}/rest/v1/org_members?user_id=eq.${user.id}&select=org_id&limit=1`,
+      `${base}/rest/v1/org_members?user_id=eq.${user.id}&select=org_id,role,status&limit=1`,
       { headers: svcH }
     )
     const members = await memRes.json()
-    if (Array.isArray(members) && members.length > 0) {
-      return Response.json({ org_id: members[0].org_id })
+    if (!Array.isArray(members) || members.length === 0) {
+      return Response.json({ status: 'none' })
     }
+    const m = members[0]
 
-    // 3. First login — create org
-    const orgName = (user.email as string | undefined)?.split('@')[0] ?? 'Organisation'
-    const orgRes = await fetch(`${base}/rest/v1/organizations?select=id`, {
-      method: 'POST',
-      headers: { ...svcH, 'Prefer': 'return=representation' },
-      body: JSON.stringify({ name: orgName }),
-    })
+    // 3. Hent org-info
+    const orgRes = await fetch(
+      `${base}/rest/v1/organizations?id=eq.${m.org_id}&select=id,name,invite_code&limit=1`,
+      { headers: svcH }
+    )
     const orgs = await orgRes.json()
-    const org = Array.isArray(orgs) ? orgs[0] : orgs
-    if (!org?.id) {
-      console.error('[api/org] create org failed', orgs)
-      return Response.json({ error: 'Failed to create org' }, { status: 500 })
-    }
+    const org = Array.isArray(orgs) ? orgs[0] : null
 
-    // 4. Add user as owner
-    await fetch(`${base}/rest/v1/org_members`, {
-      method: 'POST',
-      headers: svcH,
-      body: JSON.stringify({ org_id: org.id, user_id: user.id, role: 'owner' }),
+    return Response.json({
+      org_id: m.org_id,
+      org_name: org?.name ?? '',
+      invite_code: org?.invite_code ?? '',
+      role: m.role,
+      status: m.status,
     })
-
-    return Response.json({ org_id: org.id })
   } catch (ex) {
     console.error('[api/org]', ex)
     return Response.json({ error: String(ex) }, { status: 500 })

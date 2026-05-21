@@ -32,7 +32,9 @@ interface Recommendation {
   team_strengths?: string; interview_focus?: string[]
 }
 interface QueueItem { id: number; type: 'file' | 'linkedin' | 'text'; name: string; file?: File; content?: string }
-type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-detail' | 'employee-profile'
+type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-detail' | 'employee-profile' | 'members'
+
+interface Member { user_id: string; email: string; role: 'owner' | 'member'; status: 'pending' | 'active'; created_at: string }
 
 // ─── Constants ───────────────────────────────────────────
 const WOLVES: Record<string, { label: string }> = {
@@ -224,6 +226,12 @@ export default function App() {
   }
 
   const [orgId, setOrgId] = useState<number | null>(null)
+  const [orgName, setOrgName] = useState('')
+  const [orgCode, setOrgCode] = useState('')
+  const [orgRole, setOrgRole] = useState<'owner' | 'member' | null>(null)
+  const [orgStatus, setOrgStatus] = useState<'none' | 'pending' | 'active' | 'loading'>('loading')
+  const [members, setMembers] = useState<Member[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string>('')
   const [page, setPage] = useState<Page>('jobs')
   const [jobs, setJobs] = useState<Job[]>(initialJobs)
   const [currentJobId, setCurrentJobId] = useState<number | null>(null)
@@ -278,23 +286,57 @@ export default function App() {
   // ── Load or create organisation ──
   const loadOrCreateOrg = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) { console.warn('[loadOrCreateOrg] no session'); return }
+    if (!session?.access_token) { setOrgStatus('none'); return }
     try {
       const res = await fetch('/api/org', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
       const body = await res.json()
-      console.log('[loadOrCreateOrg] response:', res.status, body)
-      if (!res.ok) { console.error('[loadOrCreateOrg] error:', body); return }
-      if (body.org_id) {
-        setOrgId(body.org_id)
-      } else {
-        console.error('[loadOrCreateOrg] no org_id in response:', body)
+      if (!res.ok) { setOrgStatus('none'); return }
+      if (body.status === 'none' || !body.org_id) {
+        setOrgStatus('none')
+        return
       }
+      setOrgId(body.org_id)
+      setOrgName(body.org_name ?? '')
+      setOrgCode(body.invite_code ?? '')
+      setOrgRole(body.role)
+      setOrgStatus(body.status)
     } catch (ex) {
       console.error('[loadOrCreateOrg] exception:', ex)
+      setOrgStatus('none')
     }
   }, [supabase])
+
+  // Få current user id (til at finde sig selv i medlemslisten)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.id) setCurrentUserId(user.id)
+    })
+  }, [supabase])
+
+  const loadMembers = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return
+    const res = await fetch('/api/members', {
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    setMembers(data.members ?? [])
+  }, [supabase])
+
+  async function memberAction(target_user_id: string, action: 'approve' | 'deny' | 'remove') {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return
+    const res = await fetch('/api/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action, target_user_id }),
+    })
+    if (res.ok) loadMembers()
+    else alert((await res.json()).error ?? 'Handlingen fejlede')
+  }
 
   useEffect(() => { loadOrCreateOrg() }, [loadOrCreateOrg])
 
@@ -440,6 +482,13 @@ export default function App() {
     showJobs()
   }
   function navCv() { setPage('cv'); setCurrentJobId(null); setCurrentCandId(null) }
+  function showMembers() { setPage('members'); loadMembers() }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   // ── Job modal ──
   async function createJob() {
@@ -688,6 +737,9 @@ export default function App() {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentTeam.name}</span></>)
     topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button></>)
+  } else if (page === 'members') {
+    breadcrumb = <span className="tb-crumb active">Medlemmer</span>
+    topbarActions = null
   } else if (page === 'employee-profile' && currentEmployee && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openTeam(currentTeamId!)}>{currentTeam.name}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentEmployee.name}</span></>)
@@ -772,6 +824,56 @@ export default function App() {
     )
   }
 
+  // ── Status guards ──────────────────────────────────
+  if (orgStatus === 'loading') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: "'DM Sans', sans-serif", color: 'var(--m1)', fontSize: 14 }}>
+        Indlæser…
+      </div>
+    )
+  }
+
+  if (orgStatus === 'none') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: "'DM Sans', sans-serif", padding: 20 }}>
+        <div style={{ background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 16, padding: '40px 36px', maxWidth: 460, width: '100%', textAlign: 'center', boxShadow: '0 4px 32px rgba(26,25,22,.07)' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🔑</div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 700, marginBottom: 10 }}>Ingen organisation</div>
+          <p style={{ fontSize: 14, color: 'var(--m1)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>
+            Din konto er ikke knyttet til en organisation. Kontakt din administrator for at få en organisationskode, eller opret en ny konto med koden.
+          </p>
+          <button onClick={handleLogout} style={{ padding: '10px 24px', borderRadius: 9, background: 'var(--ink)', color: 'var(--bg)', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+            Log ud
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (orgStatus === 'pending') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', fontFamily: "'DM Sans', sans-serif", padding: 20 }}>
+        <div style={{ background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 16, padding: '40px 36px', maxWidth: 460, width: '100%', textAlign: 'center', boxShadow: '0 4px 32px rgba(26,25,22,.07)' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 700, marginBottom: 10 }}>Venter på godkendelse</div>
+          <p style={{ fontSize: 14, color: 'var(--m1)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>
+            Du er tilmeldt <strong style={{ color: 'var(--ink)' }}>{orgName}</strong> og venter på at ejeren godkender din anmodning. Du får adgang til platformen så snart det er gjort.
+          </p>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={() => loadOrCreateOrg()} style={{ padding: '10px 20px', borderRadius: 9, background: 'transparent', color: 'var(--ink)', border: '1px solid var(--b1)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Tjek igen
+            </button>
+            <button onClick={handleLogout} style={{ padding: '10px 20px', borderRadius: 9, background: 'var(--ink)', color: 'var(--bg)', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Log ud
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const pendingCount = members.filter(m => m.status === 'pending').length
+
   // ═══════════════════════════════════════════════════
   return (
     <>
@@ -808,12 +910,16 @@ export default function App() {
               <span className="sb-job-count">{t.employees.filter(e => !e._loading && !e._error).length}</span>
             </div>
           ))}
+          <div className={`sb-item${page === 'members' ? ' active' : ''}`} onClick={showMembers}>
+            <span className="sb-pip" /><span className="sb-ico">👥</span>Medlemmer
+            {pendingCount > 0 && <span className="sb-tag" style={{ background: 'var(--warn)', color: '#fff' }}>{pendingCount}</span>}
+          </div>
           <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
         </div>
         <div className="sb-bottom">
           <div className="sb-company">
-            <div className="sb-ca">NX</div>
-            <div><div className="sb-cn">Nexum A/S</div><div className="sb-cp">Pro licens</div></div>
+            <div className="sb-ca">{(orgName[0] ?? 'O').toUpperCase()}</div>
+            <div><div className="sb-cn">{orgName || 'Organisation'}</div><div className="sb-cp">{orgRole === 'owner' ? 'Ejer' : 'Medlem'}</div></div>
           </div>
           <button onClick={handleLogout} style={{
             marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 8,
@@ -1110,6 +1216,82 @@ export default function App() {
         {/* ── MEDARBEJDER PROFIL ── */}
         <div className={`page${page === 'employee-profile' ? ' active' : ''}`} id="page-employee-profile">
           {currentEmployee && currentTeam && renderCandProfile({ ...currentEmployee, jobId: currentEmployee.teamId }, { id: currentTeam.id, title: currentTeam.name, dept: '', type: '', wolf1: '', wolf2: '', status: 'active', candidates: [] })}
+        </div>
+
+        {/* ── MEDLEMMER ── */}
+        <div className={`page${page === 'members' ? ' active' : ''}`} id="page-members">
+          <div className="jobs-wrap">
+            {/* Org info card */}
+            <div style={{ background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 14, padding: '22px 26px', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Organisation</div>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{orgName}</div>
+                </div>
+                {orgRole === 'owner' && (
+                  <div style={{ background: 'var(--s2)', borderRadius: 10, padding: '12px 16px', border: '1px solid var(--b1)' }}>
+                    <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Invitationskode</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 16, fontWeight: 600, letterSpacing: '2px', color: 'var(--ink)' }}>{orgCode}</span>
+                      <button onClick={() => { navigator.clipboard.writeText(orgCode); alert('Kopieret!') }} style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--ink)', color: 'var(--bg)', border: 'none', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Kopiér</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pending requests */}
+            {members.filter(m => m.status === 'pending').length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                  Venter på godkendelse ({members.filter(m => m.status === 'pending').length})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {members.filter(m => m.status === 'pending').map(m => (
+                    <div key={m.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 10, padding: '14px 18px' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>{m.email}</div>
+                        <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 2 }}>Anmodet {new Date(m.created_at).toLocaleDateString('da-DK')}</div>
+                      </div>
+                      {orgRole === 'owner' && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => memberAction(m.user_id, 'approve')} style={{ padding: '7px 14px', borderRadius: 7, background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Godkend</button>
+                          <button onClick={() => memberAction(m.user_id, 'deny')} style={{ padding: '7px 14px', borderRadius: 7, background: 'transparent', color: 'var(--danger)', border: '1px solid var(--b1)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Afvis</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Active members */}
+            <div>
+              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                Aktive medlemmer ({members.filter(m => m.status === 'active').length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {members.filter(m => m.status === 'active').map(m => (
+                  <div key={m.user_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--s1)', border: '1px solid var(--b1)', borderRadius: 10, padding: '14px 18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--s2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: 'var(--m1)' }}>
+                        {(m.email[0] ?? '?').toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)' }}>
+                          {m.email} {m.user_id === currentUserId && <span style={{ fontSize: 11, color: 'var(--m2)', fontWeight: 400 }}>(dig)</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 2, textTransform: 'capitalize' }}>{m.role === 'owner' ? 'Ejer' : 'Medlem'}</div>
+                      </div>
+                    </div>
+                    {orgRole === 'owner' && m.user_id !== currentUserId && m.role !== 'owner' && (
+                      <button onClick={() => { if (confirm(`Fjern ${m.email} fra organisationen?`)) memberAction(m.user_id, 'remove') }} style={{ padding: '6px 12px', borderRadius: 7, background: 'transparent', color: 'var(--danger)', border: '1px solid var(--b1)', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Fjern</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

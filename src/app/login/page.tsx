@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -40,7 +41,13 @@ export default function LoginPage() {
       router.push('/')
       router.refresh()
     } else {
-      const { error } = await supabase.auth.signUp({ email, password })
+      // Krav: invite code
+      if (!inviteCode.trim()) {
+        setError('Indtast en organisationskode for at oprette konto.')
+        setLoading(false)
+        return
+      }
+      const { data, error } = await supabase.auth.signUp({ email, password })
       if (error) {
         setError(error.message.includes('already registered')
           ? 'Der findes allerede en konto med denne e-mail.'
@@ -48,7 +55,29 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      setSuccess('Konto oprettet! Tjek din e-mail for at bekræfte.')
+      // Forsøg at tilmelde til organisationen
+      const token = data.session?.access_token
+      if (token) {
+        const joinRes = await fetch('/api/join-org', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ invite_code: inviteCode.trim() }),
+        })
+        const joinData = await joinRes.json()
+        if (!joinRes.ok) {
+          setError(joinData.error ?? 'Ugyldig organisationskode')
+          setLoading(false)
+          return
+        }
+        if (joinData.status === 'pending') {
+          setSuccess('Konto oprettet! Du venter på godkendelse fra organisationens ejer.')
+        } else {
+          setSuccess('Konto oprettet! Du er nu ejer af organisationen.')
+        }
+        setTimeout(() => { router.push('/'); router.refresh() }, 1500)
+      } else {
+        setSuccess('Konto oprettet! Bekræft din e-mail og log derefter ind med koden.')
+      }
       setLoading(false)
     }
   }
@@ -139,6 +168,23 @@ export default function LoginPage() {
               <span style={{ fontSize: 11, color: 'var(--m2)' }}>Minimum 6 tegn</span>
             )}
           </div>
+
+          {mode === 'signup' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 11, fontWeight: 500, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '.8px' }}>
+                Organisationskode
+              </label>
+              <input
+                type="text" value={inviteCode}
+                onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                placeholder="XXXX-XXXX" required
+                style={{ ...inputStyle, letterSpacing: '2px', fontFamily: 'monospace' }}
+                onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+                onBlur={e => (e.target.style.borderColor = 'var(--b1)')}
+              />
+              <span style={{ fontSize: 11, color: 'var(--m2)' }}>Få koden fra din organisations ejer</span>
+            </div>
+          )}
 
           {error && (
             <div style={{
