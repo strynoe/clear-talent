@@ -449,6 +449,7 @@ export default function App() {
   // ── Job modal ──
   async function createJob() {
     if (!jobTitle.trim()) { setJobTitleErr(true); return }
+    if (!orgId) { alert('Vent venligst — organisationen indlæses...'); return }
     const { data, error } = await supabase.from('jobs').insert({
       title: jobTitle.trim(), dept: jobDept.trim() || 'Generel',
       type: jobType, wolf1: jobWolf1 || 'Explorer', wolf2: jobWolf2, status: 'active',
@@ -506,6 +507,7 @@ export default function App() {
   async function createTeam() {
     console.log('[createTeam] clicked, name:', teamName)
     if (!teamName.trim()) { setTeamNameErr(true); return }
+    if (!orgId) { setTeamErr('Vent venligst — organisationen indlæses...'); return }
     setTeamErr('')
     try {
       const { data, error } = await supabase.from('teams').insert({
