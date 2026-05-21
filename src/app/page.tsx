@@ -28,7 +28,7 @@ interface Employee {
 }
 interface Team { id: number; name: string; description: string; employees: Employee[] }
 interface Recommendation {
-  recommended_type: string; reasoning: string; gap_analysis: string
+  reasoning: string; gap_analysis: string
   team_strengths?: string; interview_focus?: string[]
 }
 interface QueueItem { id: number; type: 'file' | 'linkedin' | 'text'; name: string; file?: File; content?: string }
@@ -37,16 +37,10 @@ type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-deta
 interface Member { user_id: string; email: string; role: 'owner' | 'member'; status: 'pending' | 'active'; created_at: string }
 
 // ─── Constants ───────────────────────────────────────────
-const WOLVES: Record<string, { label: string }> = {
-  architect: { label: 'Type 1' }, hunter:    { label: 'Type 2' },
-  builder:   { label: 'Type 3' }, guardian:  { label: 'Type 4' },
-  protector: { label: 'Type 5' }, connector: { label: 'Type 6' },
-  challenger:{ label: 'Type 7' }, explorer:  { label: 'Type 8' },
-}
-const WOLF_COLORS: Record<string, string> = {
-  'Type 1': '#4a6aaa', 'Type 2': '#a03030', 'Type 3': '#3a7a8a', 'Type 4': '#5a7a30',
-  'Type 5': '#9a6020', 'Type 6': '#8a3a7a', 'Type 7': '#6a3a9a', 'Type 8': '#2a7a5a',
-}
+// Personlighedstype-systemet er fjernet — bygges op fra bunden.
+// Disse er tomme placeholders så UI'en stadig kan rendere.
+const WOLVES: Record<string, { label: string }> = {}
+const WOLF_COLORS: Record<string, string> = {}
 const GRADS = [
   'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
   'linear-gradient(135deg,#8a3a6a,#aa5a8a)', 'linear-gradient(135deg,#3a5a8a,#5a7aaa)',
@@ -98,14 +92,9 @@ function makeFakeCandidate(
 const initialJobs: Job[] = []
 
 // ─── Small components ────────────────────────────────────
-function WolfDots({ wolf, wolfSec }: { wolf: string; wolfSec?: string }) {
-  return (
-    <>
-      <div className="wolf-dot" style={{ background: wColor(wolf) }} />
-      <span className="wolf-name">{wolf}</span>
-      {wolfSec && (<><span className="wolf-sep">·</span><div className="wolf-dot" style={{ background: wColor(wolfSec) }} /><span className="wolf-name" style={{ opacity: .7 }}>{wolfSec}</span></>)}
-    </>
-  )
+function WolfDots(_props: { wolf: string; wolfSec?: string }) {
+  // Type-system fjernet — komponent beholdt som placeholder så UI-strukturen er intakt
+  return null
 }
 
 function BarRow({ bar, prefix }: { bar: Bar; prefix: 'cc' | 'cp' }) {
@@ -431,18 +420,16 @@ export default function App() {
     }))
     try {
       const res = await callAnalyze(content, name)
-      const wLabel = WOLVES[(res.wolf_primary ?? 'explorer').toLowerCase()]?.label ?? 'Explorer'
-      const wSecLabel = WOLVES[(res.wolf_secondary ?? '').toLowerCase()]?.label ?? ''
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
 
       const { data: saved, error: dbErr } = await supabase.from('candidates').insert({
         job_id: jobId, name, score, grad, bars,
-        wolf: wLabel, wolf_sec: wSecLabel, verdict,
+        wolf: '', wolf_sec: '', verdict,
         headline: res.headline ?? '',
         summary: res.summary ?? '',
-        wolf_reasoning: res.wolf_reasoning ?? '',
+        wolf_reasoning: '',
         personal_bio: res.personal_bio ?? '',
         flags: res.flags ?? [],
         interview_questions: res.interview_questions ?? [],
@@ -454,7 +441,7 @@ export default function App() {
 
       const cand: Candidate = saved
         ? mapCandidate(saved, jobId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], jobId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], jobId }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
         ...j, candidates: j.candidates.map(c => c.id === tempId ? cand : c),
@@ -492,7 +479,7 @@ export default function App() {
     if (!orgId) { alert('Vent venligst — organisationen indlæses...'); return }
     const { data, error } = await supabase.from('jobs').insert({
       title: jobTitle.trim(), dept: jobDept.trim() || 'Generel',
-      type: jobType, wolf1: jobWolf1 || 'Explorer', wolf2: jobWolf2, status: 'active',
+      type: jobType, wolf1: '', wolf2: '', status: 'active',
       org_id: orgId,
     }).select().single()
     if (error) { console.error('[createJob]', error.code, error.message, error.details, error.hint); return }
@@ -595,16 +582,14 @@ export default function App() {
     }))
     try {
       const res = await callAnalyze(content, name)
-      const wLabel = WOLVES[(res.wolf_primary ?? 'explorer').toLowerCase()]?.label ?? 'Type 8'
-      const wSecLabel = WOLVES[(res.wolf_secondary ?? '').toLowerCase()]?.label ?? ''
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
       const { data: saved, error: dbErr } = await supabase.from('employees').insert({
         team_id: teamId, name, score, grad, bars,
-        wolf: wLabel, wolf_sec: wSecLabel, verdict,
+        wolf: '', wolf_sec: '', verdict,
         headline: res.headline ?? '', summary: res.summary ?? '',
-        wolf_reasoning: res.wolf_reasoning ?? '',
+        wolf_reasoning: '',
         personal_bio: res.personal_bio ?? '',
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
         strengths: res.strengths ?? [], risks: res.risks ?? [],
@@ -612,7 +597,7 @@ export default function App() {
       if (dbErr) console.error('[analyzeAndAddToTeam]', dbErr.message)
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: wLabel, wolfSec: wSecLabel, verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: res.wolf_reasoning ?? '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, wolf: '', wolfSec: '', verdict, headline: res.headline ?? '', summary: res.summary ?? '', wolf_reasoning: '', personal_bio: res.personal_bio ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.strengths ?? [], risks: res.risks ?? [], teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -698,10 +683,8 @@ export default function App() {
       }
       const name = item.type === 'linkedin' ? nameFromUrl(item.name) : item.name
       const res = await callAnalyze(content, name)
-      const wLabel = WOLVES[(res.wolf_primary ?? 'explorer').toLowerCase()]?.label ?? 'Explorer'
-      const wSecLabel = WOLVES[(res.wolf_secondary ?? '').toLowerCase()]?.label ?? ''
       setCvResults(prev => prev.map(r => r.id !== tempId ? r : {
-        id: tempId, name, score: res.score ?? 0, wolf: wLabel, wolfSec: wSecLabel,
+        id: tempId, name, score: res.score ?? 0, wolf: '', wolfSec: '',
         grad, headline: res.headline ?? '', flags: (res.flags ?? []).slice(0, 2),
       }))
     } catch (err) {
@@ -761,7 +744,6 @@ export default function App() {
           <div className="cp-identity">
             <div className="cp-name">{c.name}</div>
             <div className="cp-headline">{c.headline || j.title}</div>
-            <div className="cp-wolf-row"><WolfDots wolf={c.wolf} wolfSec={c.wolfSec} /></div>
           </div>
           <div className="cp-verdict-block">
             <div className={`cp-score-big ${sClass}`}>{c.score}</div>
@@ -783,12 +765,11 @@ export default function App() {
               <div className="cp-section-title">Adfærdsprofil</div>
               {fullBars.map((b, i) => <BarRow key={i} bar={b} prefix="cp" />)}
             </div>
-            <div className="cp-section">
-              <div className="cp-section-title">Work style — {c.wolf}</div>
-              <p className="cp-wolf-reasoning">{c.wolf_reasoning || `Kandidatens work style er vurderet til ${c.wolf} baseret på erfaring og beslutningsstil.`}</p>
-              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <WolfDots wolf={c.wolf} wolfSec={c.wolfSec} />
-              </div>
+            <div className="cp-section" style={{ opacity: .6, border: '1px dashed var(--b1)', borderRadius: 10, padding: '20px' }}>
+              <div className="cp-section-title">Personprofil</div>
+              <p className="cp-wolf-reasoning" style={{ fontStyle: 'italic', color: 'var(--m1)' }}>
+                Personlighedsteorien er under opbygning. Her vil kandidatens type og arbejdsstil vises når den nye teori er klar.
+              </p>
             </div>
             <div className="cp-section">
               <div className="cp-section-title">Styrker</div>
@@ -984,7 +965,7 @@ export default function App() {
                 <div className="ji-block"><div className="ji-label">Ansættelsestype</div><div className="ji-val">{currentJob.type}</div></div>
                 <div className="ji-block"><div className="ji-label">Status</div><div className="ji-val">{currentJob.status === 'active' ? 'Aktiv opslag' : 'På pause'}</div></div>
                 <div className="ji-block"><div className="ji-label">Kandidater</div><div className="ji-val">{currentJob.candidates.length}</div></div>
-                <div className="ji-block"><div className="ji-label">Wolf-profil</div><div className="ji-val" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><WolfDots wolf={currentJob.wolf1} wolfSec={currentJob.wolf2} /></div></div>
+                <div className="ji-block"><div className="ji-label">Profil-type</div><div className="ji-val" style={{ color: 'var(--m2)', fontStyle: 'italic', fontSize: 12 }}>—</div></div>
               </div>
               <div>
                 <div className="cands-header" style={{ marginBottom: 12 }}>
@@ -1321,22 +1302,7 @@ export default function App() {
                 </select>
               </div>
             </div>
-            <div className="modal-row">
-              <div className="modal-field">
-                <div className="modal-label">Primær type</div>
-                <select className="modal-select" value={jobWolf1} onChange={e => setJobWolf1(e.target.value)}>
-                  <option value="">Vælg type</option>
-                  {Object.values(WOLVES).map(w => <option key={w.label}>{w.label}</option>)}
-                </select>
-              </div>
-              <div className="modal-field">
-                <div className="modal-label">Sekundær type</div>
-                <select className="modal-select" value={jobWolf2} onChange={e => setJobWolf2(e.target.value)}>
-                  <option value="">Valgfri</option>
-                  {Object.values(WOLVES).map(w => <option key={w.label}>{w.label}</option>)}
-                </select>
-              </div>
-            </div>
+            {/* Personlighedstype-felter fjernet — bygges når ny teori er klar */}
             {teams.length > 0 && (
               <div className="modal-row">
                 <div className="modal-field" style={{ gridColumn: '1/-1' }}>

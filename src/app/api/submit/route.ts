@@ -1,69 +1,17 @@
-// Uses Supabase REST API directly via fetch — no SDK import needed
+// Uses Supabase REST API directly via fetch — no SDK needed
 
-const WOLF_LABEL: Record<string, string> = {
-  architect: 'Type 1', hunter: 'Type 2', builder: 'Type 3', guardian: 'Type 4',
-  protector: 'Type 5', connector: 'Type 6', challenger: 'Type 7', explorer: 'Type 8',
+function sbHeaders() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ?? process.env.SUPABASE_ANON_KEY
+    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return {
+    'Content-Type': 'application/json',
+    'apikey': key,
+    'Authorization': `Bearer ${key}`,
+  }
 }
-
-const WOLVES = Object.keys(WOLF_LABEL)
-
-const QUESTIONS = [
-  'Jeg tager gerne initiativ uden at blive bedt om det',
-  'Jeg trives med at arbejde selvstændigt uden tæt opfølgning',
-  'Jeg sætter gerne retning og beslutter, når andre er i tvivl',
-  'Jeg analyserer situationer grundigt, inden jeg handler',
-  'Jeg fokuserer hellere på det store billede end på detaljer',
-  'Jeg motiveres stærkt af at nå konkrete mål',
-  'Jeg opsøger aktivt nye muligheder og udfordringer',
-  'Jeg er god til at organisere og planlægge mit arbejde',
-  'Detaljer og præcision er vigtigt for mig',
-  'Jeg arbejder bedst med klare processer og retningslinjer',
-  'Jeg tager ansvar for mine fejl og lærer af dem',
-  'Kvalitet er vigtigere for mig end hastighed',
-  'Jeg holder regler og procedurer, selv når ingen kigger',
-  'Jeg trives bedst, når jeg arbejder tæt med andre',
-  'Jeg hjælper gerne kolleger, selvom det ikke er mit ansvar',
-  'Jeg sætter teamets behov over mine egne',
-  'Jeg bygger let relationer til nye mennesker',
-  'Jeg er god til at formidle komplekse emner på en enkel måde',
-  'Jeg trives i sociale og netværksorienterede situationer',
-  'Jeg er meget loyal over for mine kolleger og organisation',
-  'Jeg udfordrer gerne eksisterende antagelser og metoder',
-  'Jeg er ikke bange for at sige min mening, selv når den er upopulær',
-  'Jeg ser problemer som muligheder frem for forhindringer',
-  'Jeg kommer ofte med nye og ukonventionelle idéer',
-  'Jeg trives bedst i omgivelser, der er åbne for forandring',
-  'Jeg foretrækker at eksperimentere frem for at følge opskriften',
-  'Jeg holder fast i mine forpligtelser, selv under pres',
-  'Jeg foretrækker stabilitet og forudsigelighed frem for forandring',
-  'Jeg performer godt under pres og med stramme deadlines',
-  'Jeg bevarer roen i kaotiske situationer',
-  'Jeg har let ved at prioritere, når der er meget på spil',
-  'Jeg er god til at sætte mig i andres sted',
-  'Jeg mærker hurtigt, hvis en kollega mistrives',
-  'Det er vigtigt for mig, at alle i et team føler sig hørt',
-  'Jeg tager gerne beslutninger hurtigt, selv med begrænset information',
-  'Jeg stoler på min intuition, når data ikke giver et klart svar',
-  'Jeg er komfortabel med at stå inde for mine beslutninger efterfølgende',
-  'Jeg tænker mere på fremtidige muligheder end nuværende udfordringer',
-  'Jeg er god til at identificere mønstre og sammenhænge i komplekse situationer',
-  'Jeg motiveres af at skabe resultater, der gør en reel forskel for andre',
-]
-
-const SECTIONS = [
-  { title: 'Dit arbejdsliv', from: 0, to: 10 },
-  { title: 'Dit samarbejde', from: 10, to: 20 },
-  { title: 'Din personlighed', from: 20, to: 30 },
-  { title: 'Dine værdier', from: 30, to: 40 },
-]
-
-function formatAnswers(answers: number[]): string {
-  return SECTIONS.map(s =>
-    `${s.title}:\n` +
-    QUESTIONS.slice(s.from, s.to)
-      .map((q, i) => `- ${q}: ${answers[s.from + i]}/5`)
-      .join('\n')
-  ).join('\n\n')
+function sbUrl(path: string) {
+  return `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!}/rest/v1/${path}`
 }
 
 function rnd(min: number, max: number) {
@@ -71,18 +19,13 @@ function rnd(min: number, max: number) {
 }
 
 function mockResult(name: string) {
-  const w = WOLVES[rnd(0, 7)]
-  const ws = WOLVES[rnd(0, 7)]
   const score = rnd(50, 88)
   return {
     headline: 'Solid profil med relevant baggrund',
     score,
-    wolf_primary: w,
-    wolf_secondary: ws,
-    wolf_reasoning: `Svarene indikerer en ${WOLF_LABEL[w]}-profil med fokus på samarbejde og initiativ.`,
     personal_bio: `${name} er en person med en tydelig retning og engagement i sit arbejdsliv. Baggrunden vidner om en person der sætter pris på faglig udvikling og meningsfulde arbejdsrelationer.`,
-    summary: `${name} fremstår som en kompetent profil baseret på spørgeskema og CV.`,
-    flags: [{ severity: 'ok' as const, text: 'Spørgeskema gennemført' }],
+    summary: `${name} fremstår som en kompetent profil baseret på det indsendte materiale.`,
+    flags: [{ severity: 'ok' as const, text: 'Profil oprettet via invitationslink' }],
     strengths: ['Faglig kompetence', 'Kommunikation', 'Samarbejdsevne'],
     risks: ['Begrænset erfaring på området'],
     interview_questions: [
@@ -100,24 +43,9 @@ const GRADS = [
   'linear-gradient(135deg,#6a3a3a,#8a5a5a)', 'linear-gradient(135deg,#3a6a8a,#5a8aaa)',
 ]
 
-function sbHeaders() {
-  // Service role key bypasses RLS — required for public form submissions
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-    ?? process.env.SUPABASE_ANON_KEY
-    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  return {
-    'Content-Type': 'application/json',
-    'apikey': key,
-    'Authorization': `Bearer ${key}`,
-  }
-}
-function sbUrl(path: string) {
-  return `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!}/rest/v1/${path}`
-}
-
 export async function POST(request: Request) {
   try {
-    const { token, name, cv_text, answers } = await request.json()
+    const { token, name, cv_text } = await request.json()
     if (!token || !name?.trim()) {
       return Response.json({ error: 'Navn og token er påkrævet' }, { status: 400 })
     }
@@ -137,27 +65,21 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invitationslinket er udløbet' }, { status: 410 })
     }
 
-    // Build AI content
-    const answersText = Array.isArray(answers) && answers.length === 40
-      ? formatAnswers(answers as number[]) : ''
-    const content = [
-      answersText ? `Spørgeskema (1=Helt uenig, 5=Helt enig):\n${answersText}` : '',
-      cv_text?.trim() ? `CV / Baggrund:\n${cv_text.trim()}` : '(intet CV indsendt)',
-    ].filter(Boolean).join('\n\n---\n\n')
+    const content = cv_text?.trim()
+      ? `CV / Baggrund:\n${cv_text.trim()}`
+      : '(intet CV indsendt)'
 
     // AI analysis
     let result = mockResult(name.trim())
 
     if (process.env.ANTHROPIC_API_KEY) {
       const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
-De 8 arbejdsstilstyper (brug disse præcise nøgler): architect, hunter, builder, guardian, protector, connector, challenger, explorer
+Analysér kandidaten ud fra det givne materiale og giv en faglig vurdering.
+
 JSON format:
 {
   "headline": "kort baggrund max 55 tegn",
   "score": tal mellem 30 og 97,
-  "wolf_primary": "en af de 8 typenøgler",
-  "wolf_secondary": "en af de 8 typenøgler",
-  "wolf_reasoning": "2-3 sætninger om typevalget baseret på spørgeskema og CV",
   "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem. Skriv varmt og nysgerrigt, ikke korporativt.",
   "summary": "3-4 sætninger samlet professionel vurdering",
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
@@ -197,15 +119,13 @@ JSON format:
     const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
     const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
     const grad = GRADS[rnd(0, GRADS.length - 1)]
-    const wLabel = WOLF_LABEL[(result.wolf_primary ?? '').toLowerCase()] ?? 'Type 1'
-    const wSecLabel = WOLF_LABEL[(result.wolf_secondary ?? '').toLowerCase()] ?? ''
 
     const record = {
       name: name.trim(), score, grad, bars, verdict,
-      wolf: wLabel, wolf_sec: wSecLabel,
+      wolf: '', wolf_sec: '',
       headline: result.headline ?? '',
       summary: result.summary ?? '',
-      wolf_reasoning: result.wolf_reasoning ?? '',
+      wolf_reasoning: '',
       personal_bio: result.personal_bio ?? '',
       flags: result.flags ?? [],
       strengths: result.strengths ?? [],
@@ -213,7 +133,6 @@ JSON format:
       interview_questions: result.interview_questions ?? [],
     }
 
-    // Insert candidate or employee
     const table = invite.type === 'job' ? 'candidates' : 'employees'
     const fk = invite.type === 'job' ? 'job_id' : 'team_id'
     const insRes = await fetch(sbUrl(table), {
@@ -226,7 +145,6 @@ JSON format:
       return Response.json({ error: err?.message ?? `Insert failed (${insRes.status})` }, { status: 500 })
     }
 
-    // Mark token used
     await fetch(sbUrl(`invite_links?id=eq.${token}`), {
       method: 'PATCH',
       headers: sbHeaders(),

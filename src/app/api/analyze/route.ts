@@ -1,13 +1,9 @@
-const WOLVES = ['architect', 'hunter', 'builder', 'guardian', 'protector', 'connector', 'challenger', 'explorer']
-
 function rnd(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
 function mockResult(name: string) {
   const score = rnd(42, 94)
-  const wolf = WOLVES[rnd(0, 7)]
-  const wolfSec = WOLVES[rnd(0, 7)]
   const flags =
     score >= 80
       ? [
@@ -26,9 +22,6 @@ function mockResult(name: string) {
   return {
     headline: 'Erfaren professional med solid baggrund',
     score,
-    wolf_primary: wolf,
-    wolf_secondary: wolfSec,
-    wolf_reasoning: `Kandidatens materiale indikerer en ${wolf}-profil med tydelige præferencer for samarbejde og initiativ.`,
     personal_bio: `${name} fremstår som en engageret person med en tydelig retning i sit karrierevalg. Baggrunden vidner om en person der sætter pris på faglig udvikling og meningsfulde arbejdsrelationer.`,
     summary: `${name} fremstår som en kompetent kandidat med relevant erfaring. Profilen matcher rollen på centrale parametre. Anbefales til en nærmere dialog for at afdække kulturel pasning og motivation.`,
     flags,
@@ -47,14 +40,12 @@ export async function POST(request: Request) {
 
   if (process.env.ANTHROPIC_API_KEY) {
     const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
-De 8 arbejdsstilstyper (brug disse præcise nøgler): architect, hunter, builder, guardian, protector, connector, challenger, explorer
+Analysér kandidaten ud fra det givne materiale og giv en faglig vurdering.
+
 JSON format:
 {
   "headline": "kort baggrund max 55 tegn",
   "score": tal mellem 30 og 97,
-  "wolf_primary": "en af de 8 typenøgler",
-  "wolf_secondary": "en af de 8 typenøgler",
-  "wolf_reasoning": "2-3 sætninger om typevalget",
   "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem — baseret på CV. Skriv varmt og nysgerrigt, ikke korporativt.",
   "summary": "3-4 sætninger samlet professionel vurdering",
   "flags": [{"severity":"red|warn|ok","text":"observation"}],

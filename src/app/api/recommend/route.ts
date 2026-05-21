@@ -1,17 +1,16 @@
-// Analyserer eksisterende teamsammensætning og anbefaler hvilken type der vil styrke teamet
+// Anbefaling baseret på et eksisterende team og en stillingsbeskrivelse.
+// Personlighedstyper er fjernet — bygges op fra bunden.
+// AI'en giver nu kun generel anbefaling baseret på beskrivelsen.
 
-interface Employee { name: string; wolf: string; wolfSec: string }
+interface Employee { name: string }
 
 function mockRecommendation(employees: Employee[], description: string) {
-  const types = ['Type 1','Type 2','Type 3','Type 4','Type 5','Type 6','Type 7','Type 8']
-  const existing = employees.map(e => e.wolf)
-  const missing = types.filter(t => !existing.includes(t))
-  const recommended = missing[0] ?? types[0]
   return {
-    recommended_type: recommended,
-    reasoning: `Teamet mangler en ${recommended}-profil. Baseret på stillingsbeskrivelsen vil denne type styrke teamets balance.`,
-    team_composition: existing,
-    gap_analysis: `Teamet har ${employees.length} medarbejdere. ${missing.length} typeroller er ikke repræsenteret.`,
+    reasoning: `Baseret på stillingsbeskrivelsen anbefales en profil der komplementerer det eksisterende team. ${description ? 'Beskrivelsen indikerer behov for relevante kompetencer indenfor det angivne område.' : ''}`,
+    team_composition: employees.map(e => e.name),
+    gap_analysis: `Teamet har ${employees.length} medarbejdere. En grundig vurdering af kandidater ud fra deres CV og baggrund anbefales.`,
+    team_strengths: 'Teamets nuværende styrker bygger på samarbejde og faglig kompetence.',
+    interview_focus: ['Faglig kompetence', 'Samarbejdsevne', 'Motivation for rollen'],
   }
 }
 
@@ -19,23 +18,17 @@ export async function POST(request: Request) {
   const { employees, description, teamName } = await request.json()
 
   if (process.env.ANTHROPIC_API_KEY && employees?.length >= 0) {
-    const typeMap: Record<string, string> = {
-      architect:'Type 1', hunter:'Type 2', builder:'Type 3', guardian:'Type 4',
-      protector:'Type 5', connector:'Type 6', challenger:'Type 7', explorer:'Type 8',
-    }
     const teamSummary = employees.length === 0
       ? 'Teamet er tomt — ingen medarbejdere endnu.'
-      : employees.map((e: Employee) => `- ${e.name}: ${typeMap[e.wolf] ?? e.wolf}${e.wolfSec ? ` (sekundær: ${typeMap[e.wolfSec] ?? e.wolfSec})` : ''}`).join('\n')
+      : employees.map((e: Employee) => `- ${e.name}`).join('\n')
 
     const sys = `Du er ekspert i teamsammensætning for TypeSystems. Returnér KUN valid JSON uden markdown.
-De 8 arbejdsstilstyper: Type 1 (architect), Type 2 (hunter), Type 3 (builder), Type 4 (guardian), Type 5 (protector), Type 6 (connector), Type 7 (challenger), Type 8 (explorer).
 
-Du modtager et eksisterende team og en stillingsbeskrivelse. Analyser teamets sammensætning og anbefal hvilken type der vil styrke teamet mest.
+Du modtager et eksisterende team og en stillingsbeskrivelse. Giv en anbefaling om hvilken type profil der vil styrke teamet baseret på stillingsbeskrivelsen.
 
 JSON format:
 {
-  "recommended_type": "Type X",
-  "reasoning": "2-3 sætninger der forklarer anbefalingen konkret ud fra teamets nuværende sammensætning og stillingsbeskrivelsen",
+  "reasoning": "2-3 sætninger der forklarer anbefalingen baseret på teamet og stillingsbeskrivelsen",
   "gap_analysis": "1-2 sætninger om hvad teamet mangler eller har for meget af",
   "team_strengths": "1-2 sætninger om teamets nuværende styrker",
   "interview_focus": ["fokuspunkt 1", "fokuspunkt 2", "fokuspunkt 3"]
