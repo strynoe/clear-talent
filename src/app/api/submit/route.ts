@@ -1,11 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-function db() {
-  return createClient(
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-}
+// Uses Supabase REST API directly via fetch — no SDK import needed
 
 const WOLF_LABEL: Record<string, string> = {
   architect: 'Type 1', hunter: 'Type 2', builder: 'Type 3', guardian: 'Type 4',
@@ -15,7 +8,6 @@ const WOLF_LABEL: Record<string, string> = {
 const WOLVES = Object.keys(WOLF_LABEL)
 
 const QUESTIONS = [
-  // Dit arbejdsliv
   'Jeg tager gerne initiativ uden at blive bedt om det',
   'Jeg trives med at arbejde selvstændigt uden tæt opfølgning',
   'Jeg sætter gerne retning og beslutter, når andre er i tvivl',
@@ -26,7 +18,6 @@ const QUESTIONS = [
   'Jeg er god til at organisere og planlægge mit arbejde',
   'Detaljer og præcision er vigtigt for mig',
   'Jeg arbejder bedst med klare processer og retningslinjer',
-  // Dit samarbejde
   'Jeg tager ansvar for mine fejl og lærer af dem',
   'Kvalitet er vigtigere for mig end hastighed',
   'Jeg holder regler og procedurer, selv når ingen kigger',
@@ -37,7 +28,6 @@ const QUESTIONS = [
   'Jeg er god til at formidle komplekse emner på en enkel måde',
   'Jeg trives i sociale og netværksorienterede situationer',
   'Jeg er meget loyal over for mine kolleger og organisation',
-  // Din personlighed
   'Jeg udfordrer gerne eksisterende antagelser og metoder',
   'Jeg er ikke bange for at sige min mening, selv når den er upopulær',
   'Jeg ser problemer som muligheder frem for forhindringer',
@@ -48,7 +38,6 @@ const QUESTIONS = [
   'Jeg foretrækker stabilitet og forudsigelighed frem for forandring',
   'Jeg performer godt under pres og med stramme deadlines',
   'Jeg bevarer roen i kaotiske situationer',
-  // Dine værdier
   'Jeg har let ved at prioritere, når der er meget på spil',
   'Jeg er god til at sætte mig i andres sted',
   'Jeg mærker hurtigt, hvis en kollega mistrives',
@@ -111,41 +100,53 @@ const GRADS = [
   'linear-gradient(135deg,#6a3a3a,#8a5a5a)', 'linear-gradient(135deg,#3a6a8a,#5a8aaa)',
 ]
 
+function sbHeaders() {
+  const key = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  return {
+    'Content-Type': 'application/json',
+    'apikey': key,
+    'Authorization': `Bearer ${key}`,
+  }
+}
+function sbUrl(path: string) {
+  return `${process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!}/rest/v1/${path}`
+}
+
 export async function POST(request: Request) {
-  const { token, name, cv_text, answers } = await request.json()
-  if (!token || !name?.trim()) {
-    return Response.json({ error: 'Navn og token er påkrævet' }, { status: 400 })
-  }
+  try {
+    const { token, name, cv_text, answers } = await request.json()
+    if (!token || !name?.trim()) {
+      return Response.json({ error: 'Navn og token er påkrævet' }, { status: 400 })
+    }
 
-  const supabase = db()
+    // Validate invite token
+    const invRes = await fetch(
+      sbUrl(`invite_links?id=eq.${token}&limit=1`),
+      { headers: sbHeaders() }
+    )
+    const invRows = await invRes.json()
+    if (!Array.isArray(invRows) || invRows.length === 0) {
+      return Response.json({ error: 'Ugyldigt invitationslink' }, { status: 400 })
+    }
+    const invite = invRows[0]
+    if (invite.used_at) return Response.json({ error: 'Dette link er allerede brugt' }, { status: 409 })
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      return Response.json({ error: 'Invitationslinket er udløbet' }, { status: 410 })
+    }
 
-  // Validate invite token
-  const { data: invite, error: invErr } = await supabase
-    .from('invite_links')
-    .select('*')
-    .eq('id', token)
-    .single()
+    // Build AI content
+    const answersText = Array.isArray(answers) && answers.length === 40
+      ? formatAnswers(answers as number[]) : ''
+    const content = [
+      answersText ? `Spørgeskema (1=Helt uenig, 5=Helt enig):\n${answersText}` : '',
+      cv_text?.trim() ? `CV / Baggrund:\n${cv_text.trim()}` : '(intet CV indsendt)',
+    ].filter(Boolean).join('\n\n---\n\n')
 
-  if (invErr || !invite) return Response.json({ error: 'Ugyldigt invitationslink' }, { status: 400 })
-  if (invite.used_at) return Response.json({ error: 'Dette link er allerede brugt' }, { status: 409 })
-  if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-    return Response.json({ error: 'Invitationslinket er udløbet' }, { status: 410 })
-  }
+    // AI analysis
+    let result = mockResult(name.trim())
 
-  // Build content for AI
-  const answersText = Array.isArray(answers) && answers.length === 40
-    ? formatAnswers(answers as number[])
-    : ''
-  const content = [
-    answersText ? `Spørgeskema (1=Helt uenig, 5=Helt enig):\n${answersText}` : '',
-    cv_text?.trim() ? `CV / Baggrund:\n${cv_text.trim()}` : '(intet CV indsendt)',
-  ].filter(Boolean).join('\n\n---\n\n')
-
-  // AI analysis
-  let result = mockResult(name.trim())
-
-  if (process.env.ANTHROPIC_API_KEY) {
-    const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
+    if (process.env.ANTHROPIC_API_KEY) {
+      const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
 De 8 arbejdsstilstyper (brug disse præcise nøgler): architect, hunter, builder, guardian, protector, connector, challenger, explorer
 JSON format:
 {
@@ -154,72 +155,84 @@ JSON format:
   "wolf_primary": "en af de 8 typenøgler",
   "wolf_secondary": "en af de 8 typenøgler",
   "wolf_reasoning": "2-3 sætninger om typevalget baseret på spørgeskema og CV",
-  "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem — baseret på CV og spørgeskema. Skriv varmt og nysgerrigt, ikke korporativt.",
+  "personal_bio": "2-3 sætninger der beskriver personen som menneske — hvem er de, hvad driver dem, hvad har formet dem. Skriv varmt og nysgerrigt, ikke korporativt.",
   "summary": "3-4 sætninger samlet professionel vurdering",
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
   "strengths": ["styrke 1","styrke 2","styrke 3"],
   "risks": ["risiko 1","risiko 2"],
   "interview_questions": ["spørgsmål 1","spørgsmål 2","spørgsmål 3"]
 }`
-    try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: sys,
-          messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}` }],
-        }),
-      })
-      if (resp.ok) {
-        const d = await resp.json()
-        const raw: string = d.content?.[0]?.text ?? ''
-        try { result = JSON.parse(raw) } catch {
-          const m = raw.match(/\{[\s\S]*\}/)
-          if (m) try { result = JSON.parse(m[0]) } catch { /* use mock */ }
+      try {
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            system: sys,
+            messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}` }],
+          }),
+        })
+        if (resp.ok) {
+          const d = await resp.json()
+          const raw: string = d.content?.[0]?.text ?? ''
+          try { result = JSON.parse(raw) } catch {
+            const m = raw.match(/\{[\s\S]*\}/)
+            if (m) try { result = JSON.parse(m[0]) } catch { /* use mock */ }
+          }
         }
-      }
-    } catch { /* use mock */ }
+      } catch { /* use mock */ }
+    }
+
+    // Build record
+    const score = typeof result.score === 'number' ? result.score : 65
+    const verdict = score >= 80 ? 'Anbefalet' : score >= 60 ? 'Forsigtighed' : 'Frarådet'
+    const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
+    const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
+    const grad = GRADS[rnd(0, GRADS.length - 1)]
+    const wLabel = WOLF_LABEL[(result.wolf_primary ?? '').toLowerCase()] ?? 'Type 1'
+    const wSecLabel = WOLF_LABEL[(result.wolf_secondary ?? '').toLowerCase()] ?? ''
+
+    const record = {
+      name: name.trim(), score, grad, bars, verdict,
+      wolf: wLabel, wolf_sec: wSecLabel,
+      headline: result.headline ?? '',
+      summary: result.summary ?? '',
+      wolf_reasoning: result.wolf_reasoning ?? '',
+      personal_bio: result.personal_bio ?? '',
+      flags: result.flags ?? [],
+      strengths: result.strengths ?? [],
+      risks: result.risks ?? [],
+      interview_questions: result.interview_questions ?? [],
+    }
+
+    // Insert candidate or employee
+    const table = invite.type === 'job' ? 'candidates' : 'employees'
+    const fk = invite.type === 'job' ? 'job_id' : 'team_id'
+    const insRes = await fetch(sbUrl(table), {
+      method: 'POST',
+      headers: { ...sbHeaders(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ ...record, [fk]: invite.target_id }),
+    })
+    if (!insRes.ok) {
+      const err = await insRes.json().catch(() => ({}))
+      return Response.json({ error: err?.message ?? `Insert failed (${insRes.status})` }, { status: 500 })
+    }
+
+    // Mark token used
+    await fetch(sbUrl(`invite_links?id=eq.${token}`), {
+      method: 'PATCH',
+      headers: sbHeaders(),
+      body: JSON.stringify({ used_at: new Date().toISOString() }),
+    })
+
+    return Response.json({ success: true, type: invite.type })
+  } catch (ex) {
+    console.error('[submit POST]', ex)
+    return Response.json({ error: String(ex) }, { status: 500 })
   }
-
-  // Build DB record
-  const score = typeof result.score === 'number' ? result.score : 65
-  const verdict = score >= 80 ? 'Anbefalet' : score >= 60 ? 'Forsigtighed' : 'Frarådet'
-  const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
-  const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
-  const grad = GRADS[rnd(0, GRADS.length - 1)]
-  const wLabel = WOLF_LABEL[(result.wolf_primary ?? '').toLowerCase()] ?? 'Type 1'
-  const wSecLabel = WOLF_LABEL[(result.wolf_secondary ?? '').toLowerCase()] ?? ''
-
-  const record = {
-    name: name.trim(), score, grad, bars, verdict,
-    wolf: wLabel, wolf_sec: wSecLabel,
-    headline: result.headline ?? '',
-    summary: result.summary ?? '',
-    wolf_reasoning: result.wolf_reasoning ?? '',
-    personal_bio: result.personal_bio ?? '',
-    flags: result.flags ?? [],
-    strengths: result.strengths ?? [],
-    risks: result.risks ?? [],
-    interview_questions: result.interview_questions ?? [],
-  }
-
-  // Insert into the right table
-  if (invite.type === 'job') {
-    const { error: insErr } = await supabase.from('candidates').insert({ ...record, job_id: invite.target_id })
-    if (insErr) return Response.json({ error: insErr.message }, { status: 500 })
-  } else {
-    const { error: insErr } = await supabase.from('employees').insert({ ...record, team_id: invite.target_id })
-    if (insErr) return Response.json({ error: insErr.message }, { status: 500 })
-  }
-
-  // Mark token used
-  await supabase.from('invite_links').update({ used_at: new Date().toISOString() }).eq('id', token)
-
-  return Response.json({ success: true, type: invite.type })
 }
