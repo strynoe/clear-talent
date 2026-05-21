@@ -87,8 +87,9 @@ function makeFakeCandidate(
   return {
     id, jobId, grad, bars,
     verdict: verdictFromScore(overrides.score),
-    summary: '', wolf_reasoning: '', personal_bio: '', flags: [], interview_questions: [], strengths: [], risks: [],
+    summary: '', wolf_reasoning: '', flags: [], interview_questions: [], strengths: [], risks: [],
     ...overrides,
+    personal_bio: overrides.personal_bio ?? '',
   }
 }
 
