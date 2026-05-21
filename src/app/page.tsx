@@ -175,10 +175,11 @@ function CandCard({ c, onClick }: { c: Candidate; onClick: () => void }) {
         {c.bars.map((b, i) => <BarRow key={i} bar={b} prefix="cc" />)}
       </div>
       <div className="cc-footer">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {c.mbti && <span style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: 'var(--ink)' }}>{c.mbti}</span>}
-          {c.enneagram && <span style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, color: 'var(--ink)' }}>Enn. {c.enneagram}</span>}
-        </div>
+        {(c.mbti || c.enneagram) ? (
+          <span style={{ padding: '3px 9px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 5, fontSize: 11, fontWeight: 700, letterSpacing: '1px', fontFamily: 'monospace' }}>
+            {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
+          </span>
+        ) : <span />}
         <div className="verdict-pill">
           <div className={`vbar ${vbarCls(c.verdict)}`} />
           <span className={vtxtCls(c.verdict)}>{c.verdict}</span>
@@ -444,7 +445,7 @@ export default function App() {
     if (!team) return ''
     const members = team.employees.filter(e => !e._loading && !e._error && e.mbti)
     if (members.length === 0) return ''
-    return members.map(e => `- ${e.name} (MBTI: ${e.mbti}, Enneagram: ${e.enneagram || '?'})`).join('\n')
+    return members.map(e => `- ${e.name}: ${e.mbti}${e.enneagram ? ` ${e.enneagram}` : ''}`).join('\n')
   }
 
   async function analyzeAndAddToJob(content: string, name: string, jobId: number) {
@@ -797,8 +798,9 @@ export default function App() {
             <div className="cp-headline">{c.headline || j.title}</div>
             {(c.mbti || c.enneagram) && (
               <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {c.mbti && <span style={{ padding: '3px 9px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: '1px', color: 'var(--ink)' }}>{c.mbti}</span>}
-                {c.enneagram && <span style={{ padding: '3px 9px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>Enn. {c.enneagram}</span>}
+                <span style={{ padding: '4px 11px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 6, fontSize: 12, fontWeight: 700, letterSpacing: '1.5px', fontFamily: 'monospace' }}>
+                  {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
+                </span>
               </div>
             )}
           </div>
@@ -828,20 +830,19 @@ export default function App() {
 
               {c.mbti || c.enneagram ? (
                 <>
-                  {/* Type-badges */}
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-                    {c.mbti && (
-                      <div style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, padding: '10px 14px' }}>
-                        <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>MBTI</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 700, letterSpacing: '1px' }}>{c.mbti}</div>
+                  {/* Formodet typekombination — prominent */}
+                  <div style={{ background: 'var(--ink)', color: 'var(--bg)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 4, opacity: .8 }}>Formodet typekombination</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 700, letterSpacing: '3px' }}>
+                        {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
                       </div>
-                    )}
-                    {c.enneagram && (
-                      <div style={{ background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 8, padding: '10px 14px' }}>
-                        <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>Enneagram</div>
-                        <div style={{ fontFamily: "'Fraunces', serif", fontSize: 18, fontWeight: 700, letterSpacing: '1px' }}>{c.enneagram}</div>
-                      </div>
-                    )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, fontSize: 10, opacity: .7 }}>
+                      {c.mbti && <span>MBTI</span>}
+                      {c.mbti && c.enneagram && <span>·</span>}
+                      {c.enneagram && <span>Tritype</span>}
+                    </div>
                   </div>
 
                   {/* Hverdagsforklaring */}

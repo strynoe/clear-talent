@@ -3,28 +3,40 @@ function rnd(min: number, max: number) {
 }
 
 function mockResult(name: string) {
-  const score = rnd(42, 94)
-  const flags = score >= 80
-    ? [{ severity: 'ok', text: 'Stærkt CV med dokumenterede resultater' }]
-    : [{ severity: 'warn', text: 'Middelmådig match på kernekompetencer' }]
   return {
     headline: 'Erfaren professional med solid baggrund',
-    score,
+    score: rnd(42, 94),
     personal_bio: `${name} fremstår som en engageret person med en tydelig retning i sit karrierevalg.`,
     summary: `${name} fremstår som en kompetent kandidat med relevant erfaring.`,
-    mbti: 'INFJ',
-    enneagram: '5w4',
-    typology_summary: 'En dyb, idealistisk og analytisk profil der trives med komplekse opgaver og meningsfulde projekter.',
-    detailed_explanation: 'MBTI-typen INFJ står for Introvert, Intuitiv, Følende, Vurderende — det betyder en person der orienterer sig indad, tænker i mønstre og helheder, lægger vægt på værdier og foretrækker struktur. Enneagram 5w4 (Iagttager med vinge mod Individualist) beskriver et menneske der søger viden og uafhængighed, samtidig med en kunstnerisk og introspektiv side. Tilsammen giver det en eftertænksom, principfast og kreativ tilgang til arbejdslivet.',
-    typology_strengths: ['Dyb refleksion og indsigt', 'Stærk indre overbevisning og værdier', 'Kreativ problemløsning', 'Forstår mennesker på et dybt plan'],
-    typology_weaknesses: ['Kan trække sig socialt under pres', 'Tendens til perfektionisme', 'Svært ved overfladisk smalltalk'],
-    collab_strengths: ['Bringer dybde og perspektiv til samtaler', 'Loyal og engageret i meningsfulde projekter', 'God til at se langsigtede konsekvenser'],
-    collab_risks: ['Kan opfattes som distanceret af mere udadvendte kolleger', 'Behov for plads og ro — kan miste energi i konstante møder'],
-    flags,
+    mbti: 'ENTP',
+    enneagram: '387',
+    typology_summary: 'En energisk og innovativ profil — ENTP 387 — der trives med komplekse problemer, strategisk tænkning og at flytte grænser.',
+    detailed_explanation: 'ENTP står for Extraverted (udadvendt — får energi af mennesker og idéer), iNtuitive (intuitiv — tænker i mønstre og muligheder frem for detaljer), Thinking (tænkende — beslutter ud fra logik), Perceiving (opfattende — foretrækker fleksibilitet over struktur). Den kognitive hovedfunktion er Ne (ekstravert intuition) — en konstant idégenererings-motor — efterfulgt af Ti (introvert tænkning), der filtrerer idéerne logisk.\n\nTritype 387 er en kombination af tre Enneagram-typer, én fra hvert center:\n• 3 (Hjerte): Præstationen — drevet af succes, anerkendelse og at fremstå kompetent\n• 8 (Krop): Udfordreren — drevet af kontrol, styrke og at undgå sårbarhed\n• 7 (Hoved): Entusiasten — drevet af nye oplevelser, frihed og at undgå smerte\n\nKombineret giver det en intens, fremdrifts-orienteret profil der både vil vinde (3), tage kommandoen (8) og udforske nye veje (7) — uden tålmodighed til detaljer eller stilstand.',
+    typology_strengths: [
+      'Ne-dominans (ENTP): Ser muligheder og forbindelser andre overser',
+      'Tritype 3: Stærk præstationsmotor og synlige resultater',
+      'Tritype 8: Naturlig ledelsesinstinkt og beslutsomhed under pres',
+      'Tritype 7: Entusiasme der trækker andre med',
+    ],
+    typology_weaknesses: [
+      'ENTP: Kan starte 10 ting og afslutte få (svag Si)',
+      'Tritype 3: Risiko for at performe rolle frem for at være autentisk',
+      'Tritype 8: Kan virke konfronterende og rolle over andres følelser',
+    ],
+    collab_strengths: [
+      'Bringer energi og nye perspektiver til teamet',
+      'God til at presse på i fastlåste situationer',
+      'Tør tage svære samtaler og beslutninger',
+    ],
+    collab_risks: [
+      'Kan komme i konflikt med strukturerede SJ-typer (fx ISTJ, ESTJ)',
+      'Tritype 8-aspektet kan opfattes som dominerende af reserverede kolleger',
+    ],
+    flags: [{ severity: 'ok', text: 'Profilanalyse gennemført på CV' }],
     interview_questions: [
-      'Hvilken type opgaver giver dig mest energi?',
-      'Hvordan håndterer du konflikter i et team?',
-      'Beskriv en situation hvor du har stået fast på dine værdier.',
+      'Beskriv en situation hvor du startede et projekt med høj energi — hvordan endte det?',
+      'Hvordan håndterer du detaljer og opfølgning når den første begejstring lægger sig?',
+      'Hvornår sidst pressede du dig selv eller andre over en grænse for at nå et mål?',
     ],
   }
 }
@@ -33,15 +45,61 @@ export async function POST(request: Request) {
   const { content, name, team_context } = await request.json()
 
   if (process.env.ANTHROPIC_API_KEY) {
-    const sys = `Du er ekspert i MBTI og Enneagrammet og bruger dem til at vurdere kandidater til rekruttering.
+    const sys = `Du er ekspert i MBTI (Myers-Briggs) og Enneagrammet med tritype-teori. Din opgave er at scanne en kandidats CV og udlede deres sandsynlige typekombination.
 
-VIGTIGT:
-- Læseren har INGEN forhåndskendskab til MBTI eller Enneagram. Forklar ALT i hverdagssprog.
-- Brug aldrig fagudtryk uden at forklare dem kort. "Introvert" → "orienterer sig indad", "Intuitiv" → "tænker i mønstre og muligheder", osv.
-- Dine vurderinger er kvalificerede gæt baseret på CV og baggrund — IKKE en officiel test. Vær varsom med absolutte påstande.
-- Hvis team_context er angivet, brug den til konkret at vurdere kollaborationsrisici med de specifikke navngivne teammedlemmer.
+━━━ TEORIGRUNDLAG ━━━━━━━━━━━━━━━━━━━━━━━━
 
-MBTI-typer er fire bogstaver (fx INTJ, ENFP). Enneagram er et tal 1-9 + valgfri vinge (fx 5w4, 7w6).
+MBTI — 4 dichotomier giver 16 typer:
+- E/I (Extraversion/Introversion): Hvor får de energi fra? (mennesker vs. egen indre verden)
+- S/N (Sensing/iNtuition): Hvad lægger de mærke til? (konkrete detaljer vs. mønstre og muligheder)
+- T/F (Thinking/Feeling): Hvordan beslutter de? (logik vs. værdier og mennesker)
+- J/P (Judging/Perceiving): Hvordan strukturerer de? (planlagt vs. fleksibelt)
+
+Hver type har 4 kognitive funktioner i prioriteret rækkefølge. De vigtigste:
+- Dominant funktion: Den de bruger mest naturligt
+- Auxiliary: Støtter dominanten
+- Tertiary: Mindre udviklet
+- Inferior: Svageste — ofte deres blind spot
+
+ENNEAGRAM med TRITYPE:
+9 grundtyper fordelt i 3 centre:
+- HOVED (tænkning): Type 5 (Iagttager), 6 (Loyalist), 7 (Entusiast) — kerne-følelse: ANGST
+- HJERTE (følelser): Type 2 (Hjælper), 3 (Præsterer), 4 (Individualist) — kerne-følelse: SKAM
+- KROP (instinkt): Type 8 (Udfordrer), 9 (Fredsmægler), 1 (Perfektionist) — kerne-følelse: VREDE
+
+TRITYPE = én type fra hvert center, i orden af dominans (3 cifre, fx 387, 549, 729).
+Eksempel: 387 = primært 3 (præstation), så 8 (styrke), så 7 (fri udforskning).
+
+━━━ ANALYSEMETODOLOGI ━━━━━━━━━━━━━━━━━━━
+
+Når du scanner CV'et, skal du:
+1. Identificere sproglige mønstre (ordvalg, formuleringer, fokusområder)
+2. Vurdere karrierevalg (hvilke job-typer, hvilken rejse?)
+3. Spotte motivationer (hvad fremhæver de? hvad nedtoner de?)
+4. Mappe mønstrene til MBTI kognitive funktioner og Enneagram kerne-drev
+5. Konkludere med MBTI + Tritype og BEGRUNDE valget med konkrete CV-referencer
+
+━━━ FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Kombinationen skrives ALTID som "MBTI Tritype", fx "ENTP 387" eller "INFJ 549".
+
+Forklar ALT i hverdagssprog — læseren har INGEN forhåndskendskab til MBTI eller Enneagram. Brug teorien gennemgående, men oversæt termer:
+- "Ne-dominans" → "har ekstravert intuition som hovedfunktion, hvilket betyder de tænker i muligheder og forbindelser"
+- "Tritype 3 i hjerte-centret" → "har præstation som primær drivkraft i deres følelsesmæssige liv"
+
+ALTID inkluder konkrete teori-referencer:
+- Hvilke kognitive funktioner peger CV'et på?
+- Hvilke Enneagram-drivkræfter er synlige?
+- Hvorfor netop denne tritype-rækkefølge?
+
+━━━ TEAM-KONTEKST ━━━━━━━━━━━━━━━━━━━━━━━
+
+Hvis team_context er angivet, vurdér konkret hvordan kandidatens MBTI + Tritype vil interagere med de navngivne teammedlemmer. Specifikt:
+- Modsatte MBTI-funktioner kan skabe friktion (fx Ti vs. Fe, Si vs. Ne)
+- Samme Enneagram-tritype kan konkurrere
+- Komplementære typer skaber stærke teams
+
+━━━ OUTPUT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Returnér KUN valid JSON uden markdown:
 {
@@ -49,16 +107,16 @@ Returnér KUN valid JSON uden markdown:
   "score": tal 30-97,
   "personal_bio": "2-3 sætninger om personen som menneske, varmt sprog",
   "summary": "3-4 sætninger samlet professionel vurdering",
-  "mbti": "fire bogstaver fx INTJ",
-  "enneagram": "tal + vinge fx 5w4",
-  "typology_summary": "1-2 sætninger på hverdagssprog der beskriver personen typologisk uden fagudtryk",
-  "detailed_explanation": "4-6 sætninger der forklarer både MBTI og Enneagram type i klart sprog. Forklar hvert bogstav/tal kort. Beskriv hvordan kombinationen påvirker arbejdsstil, beslutninger og samspil.",
-  "typology_strengths": ["typologisk styrke 1", "...2", "...3", "...4"],
-  "typology_weaknesses": ["typologisk svaghed 1", "...2", "...3"],
-  "collab_strengths": ["sådan bidrager de godt i team 1", "...2", "...3"],
-  "collab_risks": ["mulig udfordring 1 (specifikt hvis team_context er angivet)", "...2"],
+  "mbti": "fire bogstaver fx ENTP",
+  "enneagram": "tritype som 3 cifre fx 387",
+  "typology_summary": "1-2 sætninger med kombinationen tydeligt nævnt (fx 'En ENTP 387 — en innovativ og resultatdrevet profil...') der forklarer hvad kombinationen betyder uden fagudtryk",
+  "detailed_explanation": "6-10 sætninger der gennemgår: (1) hvad hvert MBTI-bogstav betyder for denne person konkret, (2) hvilke kognitive funktioner det giver, (3) hvad hver af de 3 tritype-cifre betyder og hvorfor netop denne rækkefølge, (4) hvordan kombinationen kommer til udtryk i deres adfærd. Reference TILBAGE til teorien hele tiden, men forklar i klart sprog.",
+  "typology_strengths": ["styrke 1 (med teori-reference fx 'Ne-dominans giver evne til...')","...2","...3","...4"],
+  "typology_weaknesses": ["svaghed 1 (med teori-reference)","...2","...3"],
+  "collab_strengths": ["bidrag 1","...2","...3"],
+  "collab_risks": ["udfordring 1 (specifik hvis team_context er angivet)","...2"],
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "interview_questions": ["spørgsmål 1", "spørgsmål 2", "spørgsmål 3"]
+  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","spørgsmål 2","spørgsmål 3"]
 }`
 
     const userContent = [
@@ -77,7 +135,7 @@ Returnér KUN valid JSON uden markdown:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1800,
+          max_tokens: 2400,
           system: sys,
           messages: [{ role: 'user', content: userContent }],
         }),
