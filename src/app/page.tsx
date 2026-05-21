@@ -434,14 +434,17 @@ export default function App() {
   const [teamErr, setTeamErr] = useState('')
 
   async function createTeam() {
+    console.log('[createTeam] clicked, name:', teamName)
     if (!teamName.trim()) { setTeamNameErr(true); return }
     setTeamErr('')
     const { data, error } = await supabase.from('teams').insert({
       name: teamName.trim(), description: teamDesc.trim(),
     }).select().single()
+    console.log('[createTeam] result:', { data, error })
     if (error) {
-      console.error('[createTeam]', error.code, error.message)
-      setTeamErr(error.message)
+      const msg = error.message || error.code || JSON.stringify(error) || 'Ukendt fejl'
+      console.error('[createTeam] error:', msg)
+      setTeamErr(msg)
       return
     }
     const t: Team = { ...data, employees: [] }
