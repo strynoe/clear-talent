@@ -431,15 +431,22 @@ export default function App() {
   function openTeam(id: number) { setCurrentTeamId(id); setPage('team-detail'); setCurrentEmployeeId(null); setRecommendation(null) }
   function openEmployeeProfile(empId: number) { setCurrentEmployeeId(empId); setPage('employee-profile') }
 
+  const [teamErr, setTeamErr] = useState('')
+
   async function createTeam() {
     if (!teamName.trim()) { setTeamNameErr(true); return }
+    setTeamErr('')
     const { data, error } = await supabase.from('teams').insert({
       name: teamName.trim(), description: teamDesc.trim(),
     }).select().single()
-    if (error) { console.error('[createTeam]', error.message); return }
+    if (error) {
+      console.error('[createTeam]', error.code, error.message)
+      setTeamErr(error.message)
+      return
+    }
     const t: Team = { ...data, employees: [] }
     setTeams(prev => [t, ...prev])
-    setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false)
+    setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false); setTeamErr('')
     openTeam(t.id)
   }
 
@@ -1111,6 +1118,7 @@ export default function App() {
               <textarea className="modal-textarea" rows={3} placeholder="Hvad laver dette team?" value={teamDesc} onChange={e => setTeamDesc(e.target.value)} />
             </div>
           </div>
+          {teamErr && <div style={{ padding: '8px 12px', background: 'var(--bd-bg)', color: 'var(--bd-text)', borderRadius: 8, fontSize: 12, margin: '0 20px 12px' }}>{teamErr}</div>}
           <div className="modal-footer">
             <button className="modal-btn modal-btn-ghost" onClick={() => setModalTeamOpen(false)}>Annuller</button>
             <button className="modal-btn modal-btn-create" onClick={createTeam}>Opret team →</button>
