@@ -298,11 +298,13 @@ export default function App() {
 
   useEffect(() => { loadOrCreateOrg() }, [loadOrCreateOrg])
 
-  // ── Load jobs from Supabase on mount ──
+  // ── Load jobs from Supabase (filtered by org) ──
   const loadJobs = useCallback(async () => {
+    if (!orgId) return
     const { data, error } = await supabase
       .from('jobs')
       .select('*, candidates(*)')
+      .eq('org_id', orgId)
       .order('created_at', { ascending: false })
     if (error) { console.error('[loadJobs]', error); return }
     if (data) {
@@ -314,7 +316,7 @@ export default function App() {
         candidates: (j.candidates ?? []).map((c: any) => mapCandidate(c, j.id)),
       })))
     }
-  }, [supabase])
+  }, [supabase, orgId])
 
   useEffect(() => { loadJobs() }, [loadJobs])
 
@@ -330,11 +332,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // ── Load teams from Supabase ──
+  // ── Load teams from Supabase (filtered by org) ──
   const loadTeams = useCallback(async () => {
+    if (!orgId) return
     const { data, error } = await supabase
       .from('teams')
       .select('*, employees(*)')
+      .eq('org_id', orgId)
       .order('created_at', { ascending: false })
     if (error) { console.error('[loadTeams]', error.message); return }
     if (data) {
@@ -345,7 +349,7 @@ export default function App() {
         employees: (t.employees ?? []).map((e: any) => mapEmployee(e, t.id)),
       })))
     }
-  }, [supabase])
+  }, [supabase, orgId])
 
   useEffect(() => { loadTeams() }, [loadTeams])
 
