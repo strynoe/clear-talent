@@ -76,23 +76,6 @@ function readFileText(file: File): Promise<string> {
 // ─── Initial data ────────────────────────────────────────
 const ALL_METRICS = ['Initiativ','Kommunikation','Samarbejde','Struktur','Analytisk tænkning','Fremdrift','Empati','Tilpasningsevne','Beslutningsevne','Stresshåndtering']
 
-function makeFakeCandidate(
-  overrides: Partial<Candidate> & { name: string; score: number; headline: string },
-  grad: string, jobId: number, id: number
-): Candidate {
-  const bars = shuffle(ALL_METRICS).slice(0, 3).map(l => ({ l, v: rnd(30, 97) }))
-  return {
-    id, jobId, grad, bars,
-    verdict: verdictFromScore(overrides.score),
-    summary: '', flags: [], interview_questions: [], strengths: [], risks: [],
-    mbti: '', enneagram: '', typology_summary: '', detailed_explanation: '',
-    typology_strengths: [], typology_weaknesses: [],
-    collab_strengths: [], collab_risks: [],
-    ...overrides,
-    personal_bio: overrides.personal_bio ?? '',
-  }
-}
-
 const initialJobs: Job[] = []
 
 // ─── Small components ────────────────────────────────────
