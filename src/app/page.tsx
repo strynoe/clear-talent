@@ -277,32 +277,18 @@ export default function App() {
 
   // ── Load or create organisation ──
   const loadOrCreateOrg = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    // Check existing membership
-    const { data: membership } = await supabase
-      .from('org_members')
-      .select('org_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (membership?.org_id) {
-      setOrgId(membership.org_id)
-      return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return
+    try {
+      const res = await fetch('/api/org', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+      if (!res.ok) { console.error('[loadOrCreateOrg]', await res.text()); return }
+      const { org_id } = await res.json()
+      setOrgId(org_id)
+    } catch (ex) {
+      console.error('[loadOrCreateOrg]', ex)
     }
-
-    // First login — create org automatically
-    const orgName = user.email?.split('@')[0] ?? 'Min organisation'
-    const { data: org, error: orgErr } = await supabase
-      .from('organizations')
-      .insert({ name: orgName })
-      .select()
-      .single()
-    if (orgErr || !org) { console.error('[loadOrCreateOrg]', orgErr); return }
-
-    await supabase.from('org_members').insert({ org_id: org.id, user_id: user.id, role: 'owner' })
-    setOrgId(org.id)
   }, [supabase])
 
   useEffect(() => { loadOrCreateOrg() }, [loadOrCreateOrg])
