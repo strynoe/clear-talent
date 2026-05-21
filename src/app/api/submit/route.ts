@@ -196,8 +196,8 @@ Returnér KUN valid JSON uden markdown:
       collab_strengths: result.collab_strengths ?? [],
       collab_risks: result.collab_risks ?? [],
       flags: result.flags ?? [],
-      strengths: result.typology_strengths ?? result.strengths ?? [],
-      risks: result.typology_weaknesses ?? result.risks ?? [],
+      strengths: result.typology_strengths ?? [],
+      risks: result.typology_weaknesses ?? [],
       interview_questions: result.interview_questions ?? [],
     }
 
