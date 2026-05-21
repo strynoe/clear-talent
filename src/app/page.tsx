@@ -202,7 +202,10 @@ function CandCard({ c, onClick }: { c: Candidate; onClick: () => void }) {
         {c.bars.map((b, i) => <BarRow key={i} bar={b} prefix="cc" />)}
       </div>
       <div className="cc-footer">
-        <div className="wolf-inline"><WolfDots wolf={c.wolf} wolfSec={c.wolfSec} /></div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {c.mbti && <span style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: 'var(--ink)' }}>{c.mbti}</span>}
+          {c.enneagram && <span style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, color: 'var(--ink)' }}>Enn. {c.enneagram}</span>}
+        </div>
         <div className="verdict-pill">
           <div className={`vbar ${vbarCls(c.verdict)}`} />
           <span className={vtxtCls(c.verdict)}>{c.verdict}</span>
@@ -285,8 +288,7 @@ export default function App() {
   const [jobTitle, setJobTitle] = useState('')
   const [jobDept, setJobDept] = useState('')
   const [jobType, setJobType] = useState('Fuldtid')
-  const [jobWolf1, setJobWolf1] = useState('')
-  const [jobWolf2, setJobWolf2] = useState('')
+  // jobWolf1/jobWolf2 fjernet — erstattes med ny teori senere
   const [jobTitleErr, setJobTitleErr] = useState(false)
 
   // Candidate modal form
@@ -555,7 +557,7 @@ export default function App() {
     const j: Job = { ...data, candidates: [] }
     setJobs(prev => [j, ...prev])
     setModalJobOpen(false)
-    setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobWolf1(''); setJobWolf2(''); setJobTitleErr(false)
+    setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobTitleErr(false)
     openJob(j.id)
   }
 
@@ -1123,7 +1125,7 @@ export default function App() {
                       <div className="jc-meta"><div className="jc-meta-label">Ansættelse</div><div className="jc-meta-val">{j.type}</div></div>
                       <div className="jc-meta"><div className="jc-meta-label">Kandidater</div><div className="jc-meta-val">{j.candidates.length}</div></div>
                     </div>
-                    <div className="jc-wolf-row"><WolfDots wolf={j.wolf1} wolfSec={j.wolf2} /></div>
+                    {/* Job wolf-row fjernet — bygges når ny teori er klar */}
                   </div>
                   <div className="jc-footer">
                     <span className="jc-cand-count"><span>{j.candidates.length}</span> kandidat{j.candidates.length === 1 ? '' : 'er'}</span>
@@ -1330,8 +1332,8 @@ export default function App() {
                         <div className="jc-meta"><div className="jc-meta-label">Medarbejdere</div><div className="jc-meta-val">{t.employees.filter(e => !e._loading && !e._error).length}</div></div>
                       </div>
                       <div className="jc-wolf-row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                        {[...new Set(t.employees.filter(e => !e._loading && e.wolf).map(e => e.wolf))].map(w => (
-                          <div key={w} className="wolf-inline"><div className="wolf-dot" style={{ background: wColor(w) }} /><span className="wolf-name">{w}</span></div>
+                        {[...new Set(t.employees.filter(e => !e._loading && e.mbti).map(e => e.mbti))].slice(0, 6).map(m => (
+                          <span key={m} style={{ padding: '2px 8px', background: 'var(--s2)', border: '1px solid var(--b1)', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: 'var(--ink)' }}>{m}</span>
                         ))}
                       </div>
                     </div>
@@ -1486,9 +1488,8 @@ export default function App() {
               <div className="modal-row">
                 <div className="modal-field" style={{ gridColumn: '1/-1' }}>
                   <div className="modal-label">Tilknyt team (valgfrit)</div>
-                  <select className="modal-select" value={jobWolf1 ? undefined : ''} onChange={e => {
+                  <select className="modal-select" defaultValue="" onChange={e => {
                     const teamId = Number(e.target.value)
-                    setJobs(prev => prev) // trigger re-render
                     if (teamId) getRecommendation(teamId, '')
                   }}>
                     <option value="">Ingen — standalone stilling</option>
