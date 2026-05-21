@@ -484,12 +484,6 @@ export default function App() {
   function navCv() { setPage('cv'); setCurrentJobId(null); setCurrentCandId(null) }
   function showMembers() { setPage('members'); loadMembers() }
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
-  }
-
   // ── Job modal ──
   async function createJob() {
     if (!jobTitle.trim()) { setJobTitleErr(true); return }
