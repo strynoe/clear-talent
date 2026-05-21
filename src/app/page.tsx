@@ -437,20 +437,26 @@ export default function App() {
     console.log('[createTeam] clicked, name:', teamName)
     if (!teamName.trim()) { setTeamNameErr(true); return }
     setTeamErr('')
-    const { data, error } = await supabase.from('teams').insert({
-      name: teamName.trim(), description: teamDesc.trim(),
-    }).select().single()
-    console.log('[createTeam] result:', { data, error })
-    if (error) {
-      const msg = error.message || error.code || JSON.stringify(error) || 'Ukendt fejl'
-      console.error('[createTeam] error:', msg)
-      setTeamErr(msg)
-      return
+    try {
+      const { data, error } = await supabase.from('teams').insert({
+        name: teamName.trim(), description: teamDesc.trim(),
+      }).select().single()
+      console.log('[createTeam] result:', { data, error })
+      if (error) {
+        const msg = error.message || error.code || JSON.stringify(error) || 'Ukendt fejl'
+        console.error('[createTeam] error:', msg)
+        setTeamErr(msg)
+        return
+      }
+      const t: Team = { ...data, employees: [] }
+      setTeams(prev => [t, ...prev])
+      setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false); setTeamErr('')
+      openTeam(t.id)
+    } catch (ex: unknown) {
+      const msg = ex instanceof Error ? ex.message : String(ex)
+      console.error('[createTeam] exception:', msg)
+      setTeamErr('Fejl: ' + msg)
     }
-    const t: Team = { ...data, employees: [] }
-    setTeams(prev => [t, ...prev])
-    setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false); setTeamErr('')
-    openTeam(t.id)
   }
 
   function openEmpModal() { setEmpName(''); setEmpFile(null); setEmpText(''); setEmpLinkedin(''); setModalEmpOpen(true) }
@@ -1123,8 +1129,8 @@ export default function App() {
           </div>
           {teamErr && <div style={{ padding: '8px 12px', background: 'var(--bd-bg)', color: 'var(--bd-text)', borderRadius: 8, fontSize: 12, margin: '0 20px 12px' }}>{teamErr}</div>}
           <div className="modal-footer">
-            <button className="modal-btn modal-btn-ghost" onClick={() => setModalTeamOpen(false)}>Annuller</button>
-            <button className="modal-btn modal-btn-create" onClick={createTeam}>Opret team →</button>
+            <button type="button" className="modal-btn modal-btn-ghost" onClick={() => setModalTeamOpen(false)}>Annuller</button>
+            <button type="button" className="modal-btn modal-btn-create" onClick={createTeam}>Opret team →</button>
           </div>
         </div>
       </div>
