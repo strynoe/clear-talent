@@ -310,10 +310,11 @@ export default function App() {
 
   // Få current user id (til at finde sig selv i medlemslisten)
   useEffect(() => {
-    supabase.auth.getUser().then(res => {
+    (async () => {
+      const res = await supabase.auth.getUser()
       const id = res.data?.user?.id
       if (id) setCurrentUserId(id)
-    })
+    })()
   }, [supabase])
 
   const loadMembers = useCallback(async () => {
