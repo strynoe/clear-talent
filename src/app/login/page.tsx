@@ -78,7 +78,7 @@ export default function LoginPage() {
           }}>🐺</div>
           <div>
             <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.2 }}>
-              Clear Talent
+              TypeSystems
             </div>
             <div style={{ fontSize: 10, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 1 }}>
               People Decision Intelligence

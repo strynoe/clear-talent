@@ -45,15 +45,15 @@ export async function POST(request: Request) {
   const { content, name } = await request.json()
 
   if (process.env.ANTHROPIC_API_KEY) {
-    const sys = `Du er ekspert i rekruttering for Clear Talent. Returnér KUN valid JSON uden markdown.
-De 8 Wolf work styles: architect, hunter, builder, guardian, protector, connector, challenger, explorer
+    const sys = `Du er ekspert i rekruttering for TypeSystems. Returnér KUN valid JSON uden markdown.
+De 8 arbejdsstilstyper (brug disse præcise nøgler): architect, hunter, builder, guardian, protector, connector, challenger, explorer
 JSON format:
 {
   "headline": "kort baggrund max 55 tegn",
   "score": tal mellem 30 og 97,
-  "wolf_primary": "wolf-type",
-  "wolf_secondary": "wolf-type",
-  "wolf_reasoning": "2-3 sætninger om wolf-valget",
+  "wolf_primary": "en af de 8 typenøgler",
+  "wolf_secondary": "en af de 8 typenøgler",
+  "wolf_reasoning": "2-3 sætninger om typevalget",
   "summary": "3-4 sætninger samlet vurdering",
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
   "strengths": ["styrke 1","styrke 2","styrke 3"],

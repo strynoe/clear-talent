@@ -23,14 +23,14 @@ type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile'
 
 // ─── Constants ───────────────────────────────────────────
 const WOLVES: Record<string, { label: string }> = {
-  architect: { label: 'Architect' }, hunter:    { label: 'Hunter' },
-  builder:   { label: 'Builder' },   guardian:  { label: 'Guardian' },
-  protector: { label: 'Protector' }, connector: { label: 'Connector' },
-  challenger:{ label: 'Challenger'},  explorer:  { label: 'Explorer' },
+  architect: { label: 'Type 1' }, hunter:    { label: 'Type 2' },
+  builder:   { label: 'Type 3' }, guardian:  { label: 'Type 4' },
+  protector: { label: 'Type 5' }, connector: { label: 'Type 6' },
+  challenger:{ label: 'Type 7' }, explorer:  { label: 'Type 8' },
 }
 const WOLF_COLORS: Record<string, string> = {
-  Explorer: '#2a7a5a', Hunter: '#a03030', Architect: '#4a6aaa', Builder: '#3a7a8a',
-  Connector: '#8a3a7a', Challenger: '#6a3a9a', Guardian: '#5a7a30', Protector: '#9a6020',
+  'Type 1': '#4a6aaa', 'Type 2': '#a03030', 'Type 3': '#3a7a8a', 'Type 4': '#5a7a30',
+  'Type 5': '#9a6020', 'Type 6': '#8a3a7a', 'Type 7': '#6a3a9a', 'Type 8': '#2a7a5a',
 }
 const GRADS = [
   'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
@@ -519,7 +519,7 @@ export default function App() {
       <nav className="sidebar">
         <div className="sb-logo">
           <div className="sb-icon">🐺</div>
-          <div><div className="sb-name">Clear Talent</div><div className="sb-sub">People Decision Intelligence</div></div>
+          <div><div className="sb-name">TypeSystems</div><div className="sb-sub">People Decision Intelligence</div></div>
         </div>
         <div className="sb-nav">
           <div className="sb-sec">Rekruttering</div>
@@ -540,7 +540,7 @@ export default function App() {
           </div>
           <div className="sb-sec">Organisation</div>
           <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">⬡</span>Teams<span className="sb-tag">Snart</span></div>
-          <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">🐺</span>De 8 Wolves<span className="sb-tag">Snart</span></div>
+          <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
         </div>
         <div className="sb-bottom">
           <div className="sb-company">
