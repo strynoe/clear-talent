@@ -262,7 +262,8 @@ export default function App() {
   const [jobTitle, setJobTitle] = useState('')
   const [jobDept, setJobDept] = useState('')
   const [jobType, setJobType] = useState('Fuldtid')
-  // (Tidligere wolf-felter fjernet — MBTI + Enneagram nu)
+  const [jobTeamId, setJobTeamId] = useState<number | null>(null)
+  const [jobTeamErr, setJobTeamErr] = useState(false)
   const [jobTitleErr, setJobTitleErr] = useState(false)
 
   // Candidate modal form
@@ -371,7 +372,7 @@ export default function App() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setJobs(data.map((j: any) => ({
         id: j.id, title: j.title, dept: j.dept, type: j.type,
-        status: j.status,
+        status: j.status, team_id: j.team_id,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         candidates: (j.candidates ?? []).map((c: any) => mapCandidate(c, j.id)),
       })))
@@ -522,20 +523,94 @@ export default function App() {
   function navCv() { setPage('cv'); setCurrentJobId(null); setCurrentCandId(null) }
   function showMembers() { setPage('members'); loadMembers() }
 
+  // ── Ansæt kandidat → flyt til team som medarbejder ──
+  async function hireCandidate(candidate: Candidate, job: Job) {
+    if (!job.team_id) {
+      alert('Stillingen er ikke knyttet til et team. Slet stillingen og opret en ny med et team valgt.')
+      return
+    }
+    const team = teams.find(t => t.id === job.team_id)
+    if (!team) {
+      alert('Teamet kunne ikke findes.')
+      return
+    }
+    if (!confirm(`Ansæt ${candidate.name} i ${team.name}?`)) return
+
+    const { error: insErr } = await supabase.from('employees').insert({
+      team_id: job.team_id,
+      name: candidate.name,
+      score: candidate.score,
+      grad: candidate.grad,
+      bars: candidate.bars,
+      verdict: candidate.verdict,
+      headline: candidate.headline,
+      summary: candidate.summary,
+      personal_bio: candidate.personal_bio,
+      mbti: candidate.mbti,
+      enneagram: candidate.enneagram,
+      typology_summary: candidate.typology_summary,
+      detailed_explanation: candidate.detailed_explanation,
+      typology_strengths: candidate.typology_strengths,
+      typology_weaknesses: candidate.typology_weaknesses,
+      collab_strengths: candidate.collab_strengths,
+      collab_risks: candidate.collab_risks,
+      flags: candidate.flags,
+      strengths: candidate.strengths,
+      risks: candidate.risks,
+      interview_questions: candidate.interview_questions,
+    })
+    if (insErr) { alert('Kunne ikke ansætte: ' + insErr.message); return }
+
+    const { error: delErr } = await supabase.from('candidates').delete().eq('id', candidate.id)
+    if (delErr) console.error('[hire] kunne ikke slette kandidat:', delErr)
+
+    setJobs(prev => prev.map(j => j.id !== job.id ? j : { ...j, candidates: j.candidates.filter(c => c.id !== candidate.id) }))
+    await loadTeams()
+    openTeam(team.id)
+  }
+
+  // ── Slet ────────────────────────────────────────────────
+  async function deleteCandidate(candidateId: number, jobId: number) {
+    if (!confirm('Er du sikker på du vil slette denne kandidat?')) return
+    const { error } = await supabase.from('candidates').delete().eq('id', candidateId)
+    if (error) { alert('Kunne ikke slette: ' + error.message); return }
+    setJobs(prev => prev.map(j => j.id !== jobId ? j : { ...j, candidates: j.candidates.filter(c => c.id !== candidateId) }))
+    if (currentCandId === candidateId) openJob(jobId)
+  }
+
+  async function deleteEmployee(employeeId: number, teamId: number) {
+    if (!confirm('Er du sikker på du vil slette denne medarbejder?')) return
+    const { error } = await supabase.from('employees').delete().eq('id', employeeId)
+    if (error) { alert('Kunne ikke slette: ' + error.message); return }
+    setTeams(prev => prev.map(t => t.id !== teamId ? t : { ...t, employees: t.employees.filter(e => e.id !== employeeId) }))
+    if (currentEmployeeId === employeeId) openTeam(teamId)
+  }
+
+  async function deleteJob(jobId: number) {
+    if (!confirm('Er du sikker på du vil slette stillingen? Alle tilknyttede kandidater slettes også.')) return
+    await supabase.from('candidates').delete().eq('job_id', jobId)
+    const { error } = await supabase.from('jobs').delete().eq('id', jobId)
+    if (error) { alert('Kunne ikke slette: ' + error.message); return }
+    setJobs(prev => prev.filter(j => j.id !== jobId))
+    showJobs()
+  }
+
   // ── Job modal ──
   async function createJob() {
     if (!jobTitle.trim()) { setJobTitleErr(true); return }
+    if (!jobTeamId) { setJobTeamErr(true); return }
     if (!orgId) { alert('Vent venligst — organisationen indlæses...'); return }
     const { data, error } = await supabase.from('jobs').insert({
       title: jobTitle.trim(), dept: jobDept.trim() || 'Generel',
       type: jobType, status: 'active',
       org_id: orgId,
+      team_id: jobTeamId,
     }).select().single()
     if (error) { console.error('[createJob]', error.code, error.message, error.details, error.hint); return }
     const j: Job = { ...data, candidates: [] }
     setJobs(prev => [j, ...prev])
     setModalJobOpen(false)
-    setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobTitleErr(false)
+    setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobTitleErr(false); setJobTeamId(null); setJobTeamErr(false)
     openJob(j.id)
   }
 
@@ -761,28 +836,39 @@ export default function App() {
   } else if (page === 'job-detail' && currentJob) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showJobs}>Åbne stillinger</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentJob.title}</span></>)
-    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={navCv}>CV Analyse</button><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('job', currentJob.id, currentJob.title)}>{copyLabel[`job-${currentJob.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openCandModal}>+ Tilføj kandidat</button></>)
+    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={() => deleteJob(currentJob.id)} style={{ color: 'var(--danger)' }}>Slet stilling</button><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('job', currentJob.id, currentJob.title)}>{copyLabel[`job-${currentJob.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openCandModal}>+ Tilføj kandidat</button></>)
   } else if (page === 'cv') {
     breadcrumb = <span className="tb-crumb active">CV Analyse</span>
     topbarActions = <div className="ai-pill">AI AKTIV</div>
   } else if (page === 'cand-profile' && currentCand && currentJob) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showJobs}>Åbne stillinger</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openJob(currentJobId!)}>{currentJob.title}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentCand.name}</span></>)
-    topbarActions = <button className="tb-btn tb-btn-ghost" onClick={() => openJob(currentJobId!)}>← Tilbage til stilling</button>
+    topbarActions = (
+      <>
+        <button className="tb-btn tb-btn-ghost" onClick={() => deleteCandidate(currentCand.id, currentJob.id)} style={{ color: 'var(--danger)' }}>Slet</button>
+        <button className="tb-btn tb-btn-primary" onClick={() => hireCandidate(currentCand, currentJob)}>✓ Ansæt</button>
+        <button className="tb-btn tb-btn-ghost" onClick={() => openJob(currentJobId!)}>← Tilbage</button>
+      </>
+    )
   } else if (page === 'teams') {
     breadcrumb = <span className="tb-crumb active">Teams</span>
     topbarActions = <button className="tb-btn tb-btn-primary" onClick={() => setModalTeamOpen(true)}>+ Opret team</button>
   } else if (page === 'team-detail' && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentTeam.name}</span></>)
-    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button></>)
+    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={async () => { if (!confirm(`Slet team "${currentTeam.name}" og alle medarbejdere?`)) return; await supabase.from('employees').delete().eq('team_id', currentTeam.id); const { error } = await supabase.from('teams').delete().eq('id', currentTeam.id); if (error) { alert('Kunne ikke slette: ' + error.message); return } setTeams(prev => prev.filter(t => t.id !== currentTeam.id)); showTeams() }} style={{ color: 'var(--danger)' }}>Slet team</button><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button></>)
   } else if (page === 'members') {
     breadcrumb = <span className="tb-crumb active">Medlemmer</span>
     topbarActions = null
   } else if (page === 'employee-profile' && currentEmployee && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb" onClick={() => openTeam(currentTeamId!)}>{currentTeam.name}</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentEmployee.name}</span></>)
-    topbarActions = <button className="tb-btn tb-btn-ghost" onClick={() => openTeam(currentTeamId!)}>← Tilbage til team</button>
+    topbarActions = (
+      <>
+        <button className="tb-btn tb-btn-ghost" onClick={() => deleteEmployee(currentEmployee.id, currentTeam.id)} style={{ color: 'var(--danger)' }}>Slet</button>
+        <button className="tb-btn tb-btn-ghost" onClick={() => openTeam(currentTeamId!)}>← Tilbage</button>
+      </>
+    )
   }
 
   // ── Candidate profile helpers ──
@@ -1126,7 +1212,7 @@ export default function App() {
                 <div className="ji-block"><div className="ji-label">Ansættelsestype</div><div className="ji-val">{currentJob.type}</div></div>
                 <div className="ji-block"><div className="ji-label">Status</div><div className="ji-val">{currentJob.status === 'active' ? 'Aktiv opslag' : 'På pause'}</div></div>
                 <div className="ji-block"><div className="ji-label">Kandidater</div><div className="ji-val">{currentJob.candidates.length}</div></div>
-                <div className="ji-block"><div className="ji-label">Profil-type</div><div className="ji-val" style={{ color: 'var(--m2)', fontStyle: 'italic', fontSize: 12 }}>—</div></div>
+                <div className="ji-block"><div className="ji-label">Afdeling</div><div className="ji-val">{teams.find(t => t.id === currentJob.team_id)?.name ?? '—'}</div></div>
               </div>
               <div>
                 <div className="cands-header" style={{ marginBottom: 12 }}>
@@ -1468,20 +1554,26 @@ export default function App() {
               </div>
             </div>
             {/* Personlighedstype-felter fjernet — bygges når ny teori er klar */}
-            {teams.length > 0 && (
-              <div className="modal-row">
-                <div className="modal-field" style={{ gridColumn: '1/-1' }}>
-                  <div className="modal-label">Tilknyt team (valgfrit)</div>
-                  <select className="modal-select" defaultValue="" onChange={e => {
-                    const teamId = Number(e.target.value)
-                    if (teamId) getRecommendation(teamId, '')
-                  }}>
-                    <option value="">Ingen — standalone stilling</option>
+            <div className="modal-row">
+              <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                <div className="modal-label">Afdeling (hvilket team ansætter du til?) *</div>
+                {teams.length === 0 ? (
+                  <div style={{ padding: '12px 14px', borderRadius: 9, background: 'var(--s2)', border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
+                    Du har endnu ikke oprettet nogen teams. Opret et team først under <strong>Teams</strong> i sidebaren.
+                  </div>
+                ) : (
+                  <select
+                    className="modal-select"
+                    value={jobTeamId ?? ''}
+                    onChange={e => { setJobTeamId(e.target.value ? Number(e.target.value) : null); setJobTeamErr(false) }}
+                    style={jobTeamErr ? { borderColor: 'var(--danger)' } : {}}
+                  >
+                    <option value="">Vælg team</option>
                     {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-                </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
           <div className="modal-footer">
             <button className="modal-btn modal-btn-ghost" onClick={() => setModalJobOpen(false)}>Annuller</button>
