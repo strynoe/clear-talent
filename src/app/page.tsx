@@ -12,6 +12,8 @@ interface Typology {
   typology_summary: string; detailed_explanation: string
   typology_strengths: string[]; typology_weaknesses: string[]
   collab_strengths: string[]; collab_risks: string[]
+  role_fit_score?: number; role_fit_reasoning?: string
+  leader_fit?: string
 }
 interface Candidate extends Typology {
   id: number; name: string; score: number
@@ -24,6 +26,7 @@ interface Job {
   id: number; title: string; dept: string; type: string
   status: 'active' | 'paused'; candidates: Candidate[]
   team_id?: number | null; description?: string
+  hard_skills?: string; success_criteria?: string; experience_level?: string
 }
 interface Employee extends Typology {
   id: number; name: string; score: number
@@ -32,7 +35,10 @@ interface Employee extends Typology {
   strengths: string[]; risks: string[]; teamId: number
   _loading?: boolean; _error?: string
 }
-interface Team { id: number; name: string; description: string; employees: Employee[] }
+interface Team {
+  id: number; name: string; description: string; employees: Employee[]
+  manager_mbti?: string; manager_enneagram?: string; leadership_style?: string
+}
 interface Recommendation {
   reasoning: string; gap_analysis: string
   team_strengths?: string; interview_focus?: string[]
@@ -206,6 +212,9 @@ function mapEmployee(e: any, teamId: number): Employee {
     typology_weaknesses: e.typology_weaknesses ?? [],
     collab_strengths: e.collab_strengths ?? [],
     collab_risks: e.collab_risks ?? [],
+    role_fit_score: e.role_fit_score ?? undefined,
+    role_fit_reasoning: e.role_fit_reasoning ?? '',
+    leader_fit: e.leader_fit ?? '',
     flags: e.flags ?? [], strengths: e.strengths ?? [],
     risks: e.risks ?? [], interview_questions: e.interview_questions ?? [],
     teamId,
@@ -226,6 +235,9 @@ function mapCandidate(c: any, jobId: number): Candidate {
     typology_weaknesses: c.typology_weaknesses ?? [],
     collab_strengths: c.collab_strengths ?? [],
     collab_risks: c.collab_risks ?? [],
+    role_fit_score: c.role_fit_score ?? undefined,
+    role_fit_reasoning: c.role_fit_reasoning ?? '',
+    leader_fit: c.leader_fit ?? '',
     flags: c.flags ?? [], strengths: c.strengths ?? [],
     risks: c.risks ?? [], interview_questions: c.interview_questions ?? [],
     jobId,
@@ -264,6 +276,10 @@ export default function App() {
   const [jobType, setJobType] = useState('Fuldtid')
   const [jobTeamId, setJobTeamId] = useState<number | null>(null)
   const [jobTeamErr, setJobTeamErr] = useState(false)
+  const [jobDescription, setJobDescription] = useState('')
+  const [jobHardSkills, setJobHardSkills] = useState('')
+  const [jobSuccessCriteria, setJobSuccessCriteria] = useState('')
+  const [jobExperienceLevel, setJobExperienceLevel] = useState('')
   const [jobTitleErr, setJobTitleErr] = useState(false)
 
   // Candidate modal form
@@ -282,6 +298,9 @@ export default function App() {
   const [modalEmpOpen, setModalEmpOpen] = useState(false)
   const [teamName, setTeamName] = useState('')
   const [teamDesc, setTeamDesc] = useState('')
+  const [teamManagerMbti, setTeamManagerMbti] = useState('')
+  const [teamManagerEnneagram, setTeamManagerEnneagram] = useState('')
+  const [teamLeadershipStyle, setTeamLeadershipStyle] = useState('')
   const [teamNameErr, setTeamNameErr] = useState(false)
   const [empName, setEmpName] = useState('')
   const [empFile, setEmpFile] = useState<File | null>(null)
@@ -373,6 +392,10 @@ export default function App() {
       setJobs(data.map((j: any) => ({
         id: j.id, title: j.title, dept: j.dept, type: j.type,
         status: j.status, team_id: j.team_id,
+        description: j.description ?? '',
+        hard_skills: j.hard_skills ?? '',
+        success_criteria: j.success_criteria ?? '',
+        experience_level: j.experience_level ?? '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         candidates: (j.candidates ?? []).map((c: any) => mapCandidate(c, j.id)),
       })))
@@ -406,6 +429,9 @@ export default function App() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setTeams(data.map((t: any) => ({
         id: t.id, name: t.name, description: t.description,
+        manager_mbti: t.manager_mbti ?? '',
+        manager_enneagram: t.manager_enneagram ?? '',
+        leadership_style: t.leadership_style ?? '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         employees: (t.employees ?? []).map((e: any) => mapEmployee(e, t.id)),
       })))
@@ -430,11 +456,11 @@ export default function App() {
   }
 
   // ── AI analyze ──
-  async function callAnalyze(content: string, name: string, team_context?: string) {
+  async function callAnalyze(content: string, name: string, ctx: { team_context?: string; role_context?: string; leader_context?: string } = {}) {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, name, team_context }),
+      body: JSON.stringify({ content, name, ...ctx }),
     })
     if (!res.ok) throw new Error('Analyse fejlede')
     const data = await res.json()
@@ -451,6 +477,28 @@ export default function App() {
     return members.map(e => `- ${e.name}: ${e.mbti}${e.enneagram ? ` ${e.enneagram}` : ''}`).join('\n')
   }
 
+  function buildLeaderContext(teamId: number | null | undefined): string {
+    if (!teamId) return ''
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return ''
+    const parts: string[] = []
+    if (team.manager_mbti) parts.push(`Lederens MBTI: ${team.manager_mbti}`)
+    if (team.manager_enneagram) parts.push(`Lederens Enneagram-tritype: ${team.manager_enneagram}`)
+    if (team.leadership_style) parts.push(`Lederstil: ${team.leadership_style}`)
+    return parts.join('\n')
+  }
+
+  function buildRoleContext(job: Job | undefined): string {
+    if (!job) return ''
+    const parts: string[] = []
+    if (job.title) parts.push(`Stilling: ${job.title}`)
+    if (job.experience_level) parts.push(`Erfaringsniveau: ${job.experience_level}`)
+    if (job.description) parts.push(`Rolle-beskrivelse: ${job.description}`)
+    if (job.hard_skills) parts.push(`Nødvendige hard skills: ${job.hard_skills}`)
+    if (job.success_criteria) parts.push(`Succes-kriterier: ${job.success_criteria}`)
+    return parts.join('\n')
+  }
+
   async function analyzeAndAddToJob(content: string, name: string, jobId: number) {
     const tempId = -(Date.now() + Math.random())
     const grad = GRADS[analysisCount.current++ % GRADS.length]
@@ -459,8 +507,10 @@ export default function App() {
     }))
     try {
       const job = jobs.find(j => j.id === jobId)
-      const teamContext = buildTeamContext(job?.team_id)
-      const res = await callAnalyze(content, name, teamContext)
+      const team_context  = buildTeamContext(job?.team_id)
+      const leader_context = buildLeaderContext(job?.team_id)
+      const role_context   = buildRoleContext(job)
+      const res = await callAnalyze(content, name, { team_context, leader_context, role_context })
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
@@ -478,6 +528,9 @@ export default function App() {
         typology_weaknesses: res.typology_weaknesses ?? [],
         collab_strengths: res.collab_strengths ?? [],
         collab_risks: res.collab_risks ?? [],
+        role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : null,
+        role_fit_reasoning: res.role_fit_reasoning ?? '',
+        leader_fit: res.leader_fit ?? '',
         flags: res.flags ?? [],
         interview_questions: res.interview_questions ?? [],
         strengths: res.typology_strengths ?? res.strengths ?? [],
@@ -554,6 +607,9 @@ export default function App() {
       typology_weaknesses: candidate.typology_weaknesses,
       collab_strengths: candidate.collab_strengths,
       collab_risks: candidate.collab_risks,
+      role_fit_score: candidate.role_fit_score ?? null,
+      role_fit_reasoning: candidate.role_fit_reasoning ?? '',
+      leader_fit: candidate.leader_fit ?? '',
       flags: candidate.flags,
       strengths: candidate.strengths,
       risks: candidate.risks,
@@ -605,12 +661,17 @@ export default function App() {
       type: jobType, status: 'active',
       org_id: orgId,
       team_id: jobTeamId,
+      description: jobDescription.trim(),
+      hard_skills: jobHardSkills.trim(),
+      success_criteria: jobSuccessCriteria.trim(),
+      experience_level: jobExperienceLevel,
     }).select().single()
     if (error) { console.error('[createJob]', error.code, error.message, error.details, error.hint); return }
     const j: Job = { ...data, candidates: [] }
     setJobs(prev => [j, ...prev])
     setModalJobOpen(false)
     setJobTitle(''); setJobDept(''); setJobType('Fuldtid'); setJobTitleErr(false); setJobTeamId(null); setJobTeamErr(false)
+    setJobDescription(''); setJobHardSkills(''); setJobSuccessCriteria(''); setJobExperienceLevel('')
     openJob(j.id)
   }
 
@@ -664,6 +725,9 @@ export default function App() {
       const { data, error } = await supabase.from('teams').insert({
         name: teamName.trim(), description: teamDesc.trim(),
         org_id: orgId,
+        manager_mbti: teamManagerMbti.toUpperCase().trim(),
+        manager_enneagram: teamManagerEnneagram.trim(),
+        leadership_style: teamLeadershipStyle,
       }).select().single()
       console.log('[createTeam] result:', { data, error })
       if (error) {
@@ -675,6 +739,7 @@ export default function App() {
       const t: Team = { ...data, employees: [] }
       setTeams(prev => [t, ...prev])
       setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false); setTeamErr('')
+      setTeamManagerMbti(''); setTeamManagerEnneagram(''); setTeamLeadershipStyle('')
       openTeam(t.id)
     } catch (ex: unknown) {
       const msg = ex instanceof Error ? ex.message : String(ex)
@@ -705,8 +770,9 @@ export default function App() {
       ...t, employees: [...t.employees, { id: tempId, name, _loading: true } as Employee],
     }))
     try {
-      const teamContext = buildTeamContext(teamId)
-      const res = await callAnalyze(content, name, teamContext)
+      const team_context = buildTeamContext(teamId)
+      const leader_context = buildLeaderContext(teamId)
+      const res = await callAnalyze(content, name, { team_context, leader_context })
       const score = res.score ?? rnd(50, 90)
       const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
@@ -722,6 +788,9 @@ export default function App() {
         typology_weaknesses: res.typology_weaknesses ?? [],
         collab_strengths: res.collab_strengths ?? [],
         collab_risks: res.collab_risks ?? [],
+        role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : null,
+        role_fit_reasoning: res.role_fit_reasoning ?? '',
+        leader_fit: res.leader_fit ?? '',
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
         strengths: res.typology_strengths ?? res.strengths ?? [],
         risks: res.typology_weaknesses ?? res.risks ?? [],
@@ -985,6 +1054,35 @@ export default function App() {
                 </p>
               )}
             </div>
+
+            {/* Rolle-fit (kun hvis stillingen havde rolle-kontekst) */}
+            {(typeof c.role_fit_score === 'number' || c.role_fit_reasoning) && (
+              <div className="cp-section">
+                <div className="cp-section-title">Rolle-fit til denne stilling</div>
+                {typeof c.role_fit_score === 'number' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
+                    <div style={{
+                      fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 700,
+                      color: c.role_fit_score >= 75 ? 'var(--accent)' : c.role_fit_score >= 50 ? 'var(--warn)' : 'var(--danger)',
+                    }}>
+                      {c.role_fit_score}<span style={{ fontSize: 14, color: 'var(--m2)', fontWeight: 400 }}>/100</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px' }}>Match til rollens krav</div>
+                  </div>
+                )}
+                {c.role_fit_reasoning && (
+                  <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>{c.role_fit_reasoning}</p>
+                )}
+              </div>
+            )}
+
+            {/* Leder-fit */}
+            {c.leader_fit && (
+              <div className="cp-section">
+                <div className="cp-section-title">Under denne leder</div>
+                <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>{c.leader_fit}</p>
+              </div>
+            )}
 
             {/* Samarbejde i team */}
             {(c.collab_strengths.length > 0 || c.collab_risks.length > 0) && (
@@ -1574,6 +1672,42 @@ export default function App() {
                 )}
               </div>
             </div>
+
+            {/* Rolle-kontekst — bruges af AI til mere præcis vurdering */}
+            <div style={{ marginTop: 8, padding: '14px 0 0', borderTop: '1px solid var(--b1)' }}>
+              <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4, fontWeight: 600 }}>Rolle-kontekst (valgfri)</div>
+              <div style={{ fontSize: 12, color: 'var(--m1)', marginBottom: 12 }}>Jo mere detaljeret, jo mere præcis bliver AI-analysen af kandidaterne.</div>
+            </div>
+            <div className="modal-row">
+              <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                <div className="modal-label">Rolle-beskrivelse</div>
+                <textarea className="modal-textarea" rows={3} placeholder="Hvad laver personen i denne rolle? Hvad er ansvarsområderne?" value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-row">
+              <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                <div className="modal-label">Nødvendige hard skills</div>
+                <input className="modal-input" placeholder="fx Python, SQL, Salesforce, B2B-salg" value={jobHardSkills} onChange={e => setJobHardSkills(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-row">
+              <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                <div className="modal-label">Succes-kriterier</div>
+                <input className="modal-input" placeholder="fx 'Bygger kundebase fra 0 til 50 inden 12 mdr'" value={jobSuccessCriteria} onChange={e => setJobSuccessCriteria(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-row">
+              <div className="modal-field" style={{ gridColumn: '1/-1' }}>
+                <div className="modal-label">Erfaringsniveau</div>
+                <select className="modal-select" value={jobExperienceLevel} onChange={e => setJobExperienceLevel(e.target.value)}>
+                  <option value="">Vælg niveau</option>
+                  <option value="Junior">Junior (0-2 år)</option>
+                  <option value="Mid">Mid (2-5 år)</option>
+                  <option value="Senior">Senior (5+ år)</option>
+                  <option value="Lead">Lead / Ledelse</option>
+                </select>
+              </div>
+            </div>
           </div>
           <div className="modal-footer">
             <button className="modal-btn modal-btn-ghost" onClick={() => setModalJobOpen(false)}>Annuller</button>
@@ -1601,6 +1735,45 @@ export default function App() {
             <div className="modal-field">
               <div className="modal-label">Beskrivelse (valgfrit)</div>
               <textarea className="modal-textarea" rows={3} placeholder="Hvad laver dette team?" value={teamDesc} onChange={e => setTeamDesc(e.target.value)} />
+            </div>
+
+            {/* Leder-kontekst — bruges af AI til at vurdere kollaborations-fit */}
+            <div style={{ marginTop: 8, padding: '14px 0 0', borderTop: '1px solid var(--b1)' }}>
+              <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4, fontWeight: 600 }}>Leder-kontekst (valgfri)</div>
+              <div style={{ fontSize: 12, color: 'var(--m1)', marginBottom: 12 }}>AI'en bruger lederstil til at forudsige hvor godt kandidater fungerer under denne leder.</div>
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">Lederens MBTI</div>
+              <input
+                className="modal-input"
+                placeholder="fx INTJ"
+                value={teamManagerMbti}
+                onChange={e => setTeamManagerMbti(e.target.value.toUpperCase())}
+                maxLength={4}
+                style={{ fontFamily: 'monospace', letterSpacing: '2px' }}
+              />
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">Lederens Enneagram-tritype</div>
+              <input
+                className="modal-input"
+                placeholder="fx 514"
+                value={teamManagerEnneagram}
+                onChange={e => setTeamManagerEnneagram(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                style={{ fontFamily: 'monospace', letterSpacing: '2px' }}
+              />
+            </div>
+            <div className="modal-field">
+              <div className="modal-label">Lederstil</div>
+              <select className="modal-select" value={teamLeadershipStyle} onChange={e => setTeamLeadershipStyle(e.target.value)}>
+                <option value="">Vælg stil</option>
+                <option value="Coaching">Coaching — vejleder og udvikler</option>
+                <option value="Demokratisk">Demokratisk — beslutninger sammen</option>
+                <option value="Autoritær">Autoritær — top-down, klar retning</option>
+                <option value="Laissez-faire">Laissez-faire — stor frihed</option>
+                <option value="Servant">Servant — støtter teamet</option>
+                <option value="Visionær">Visionær — sætter retning og inspirerer</option>
+              </select>
             </div>
           </div>
           {teamErr && <div style={{ padding: '8px 12px', background: 'var(--bd-bg)', color: 'var(--bd-text)', borderRadius: 8, fontSize: 12, margin: '0 20px 12px' }}>{teamErr}</div>}

@@ -42,7 +42,7 @@ function mockResult(name: string) {
 }
 
 export async function POST(request: Request) {
-  const { content, name, team_context } = await request.json()
+  const { content, name, team_context, leader_context, role_context } = await request.json()
 
   if (process.env.ANTHROPIC_API_KEY) {
     const sys = `Du er ekspert i MBTI (Myers-Briggs) og Enneagrammet med tritype-teori. Din opgave er at scanne en kandidats CV og udlede deres sandsynlige typekombination.
@@ -94,35 +94,51 @@ ALTID inkluder konkrete teori-referencer:
 
 ━━━ TEAM-KONTEKST ━━━━━━━━━━━━━━━━━━━━━━━
 
-Hvis team_context er angivet, vurdér konkret hvordan kandidatens MBTI + Tritype vil interagere med de navngivne teammedlemmer. Specifikt:
-- Modsatte MBTI-funktioner kan skabe friktion (fx Ti vs. Fe, Si vs. Ne)
-- Samme Enneagram-tritype kan konkurrere
-- Komplementære typer skaber stærke teams
+Hvis team_context er angivet, vurdér konkret hvordan kandidatens MBTI + Tritype vil interagere med de navngivne teammedlemmer.
+
+━━━ LEDER-KONTEKST ━━━━━━━━━━━━━━━━━━━━━━
+
+Hvis leder-information er angivet, vurdér specifikt hvordan kandidaten vil fungere under denne leder:
+- Match imellem kandidatens og lederens MBTI/Tritype
+- Lederstilen (Coaching/Autoritær/Demokratisk/Laissez-faire/Servant/Visionær) — hvilke kandidat-typer trives bedst under hvilken stil?
+- Hvor opstår der typisk friktion eller god kemi?
+
+━━━ ROLLE-KONTEKST ━━━━━━━━━━━━━━━━━━━━━━
+
+Hvis rolle-beskrivelse, hard skills, succes-kriterier eller erfaringsniveau er angivet:
+- Vurdér KONKRET hvor kandidatens profil matcher rollens krav
+- "role_fit_score" (0-100) skal afspejle MATCHET mellem kandidat og DENNE specifikke rolle (ikke en generel score)
+- "role_fit_reasoning" skal forklare hvorfor scoren er som den er — referer både til CV-fakta og kandidatens MBTI/Tritype
 
 ━━━ OUTPUT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Returnér KUN valid JSON uden markdown:
 {
   "headline": "kort baggrund max 55 tegn",
-  "score": tal 30-97,
+  "score": tal 30-97 (samlet kvalitet af kandidaten),
   "personal_bio": "2-3 sætninger om personen som menneske, varmt sprog",
   "summary": "3-4 sætninger samlet professionel vurdering",
   "mbti": "fire bogstaver fx ENTP",
   "enneagram": "tritype som 3 cifre fx 387",
-  "typology_summary": "1-2 sætninger med kombinationen tydeligt nævnt (fx 'En ENTP 387 — en innovativ og resultatdrevet profil...') der forklarer hvad kombinationen betyder uden fagudtryk",
-  "detailed_explanation": "6-10 sætninger der gennemgår: (1) hvad hvert MBTI-bogstav betyder for denne person konkret, (2) hvilke kognitive funktioner det giver, (3) hvad hver af de 3 tritype-cifre betyder og hvorfor netop denne rækkefølge, (4) hvordan kombinationen kommer til udtryk i deres adfærd. Reference TILBAGE til teorien hele tiden, men forklar i klart sprog.",
-  "typology_strengths": ["styrke 1 (med teori-reference fx 'Ne-dominans giver evne til...')","...2","...3","...4"],
+  "typology_summary": "1-2 sætninger med kombinationen tydeligt nævnt",
+  "detailed_explanation": "6-10 sætninger der gennemgår MBTI-bogstaver, kognitive funktioner, tritype-cifre og hvordan kombinationen udmønter sig",
+  "typology_strengths": ["styrke 1 (med teori-reference)","...2","...3","...4"],
   "typology_weaknesses": ["svaghed 1 (med teori-reference)","...2","...3"],
   "collab_strengths": ["bidrag 1","...2","...3"],
-  "collab_risks": ["udfordring 1 (specifik hvis team_context er angivet)","...2"],
+  "collab_risks": ["udfordring 1 (specifik hvis team_context)","...2"],
+  "role_fit_score": tal 0-100 (kun hvis role_context angivet — match mod denne rolles krav),
+  "role_fit_reasoning": "2-3 sætninger om hvorfor scoren er som den er (kun hvis role_context). Referer til både CV og typologi.",
+  "leader_fit": "2-3 sætninger om hvordan kandidaten vil arbejde under den angivne leder (kun hvis leader_context)",
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","spørgsmål 2","spørgsmål 3"]
+  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen OG matchet mod rollen)","...2","...3"]
 }`
 
     const userContent = [
       `Kandidat: ${name}`,
       content || '(ingen tekst)',
-      team_context ? `\n\nEKSISTERENDE TEAMMEDLEMMER (brug til specifikke collab_risks):\n${team_context}` : '',
+      role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
+      leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
+      team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
     ].filter(Boolean).join('\n\n')
 
     try {
