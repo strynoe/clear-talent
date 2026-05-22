@@ -1,3 +1,6 @@
+// Forlænget timeout — AI-analysen kan tage 20-30 sek
+export const maxDuration = 60
+
 function rnd(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
@@ -151,7 +154,7 @@ Returnér KUN valid JSON uden markdown:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 2400,
+          max_tokens: 1600,
           system: sys,
           messages: [{ role: 'user', content: userContent }],
         }),

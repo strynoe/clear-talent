@@ -1,5 +1,8 @@
 // Uses Supabase REST API directly via fetch — no SDK needed
 
+// Forlænget timeout — AI-analysen kan tage 20-30 sek
+export const maxDuration = 60
+
 function sbHeaders() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
     ?? process.env.SUPABASE_ANON_KEY
@@ -159,7 +162,7 @@ Returnér KUN valid JSON uden markdown:
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 2400,
+            max_tokens: 1600,
             system: sys,
             messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}${teamContext ? `\n\nEKSISTERENDE TEAMMEDLEMMER:\n${teamContext}` : ''}` }],
           }),

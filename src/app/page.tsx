@@ -33,11 +33,11 @@ interface Employee extends Typology {
   grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
   personal_bio: string; flags: Flag[]; interview_questions: string[]
   strengths: string[]; risks: string[]; teamId: number
+  role: 'member' | 'leader'; leadership_style: string
   _loading?: boolean; _error?: string
 }
 interface Team {
   id: number; name: string; description: string; employees: Employee[]
-  manager_mbti?: string; manager_enneagram?: string; leadership_style?: string
 }
 interface Recommendation {
   reasoning: string; gap_analysis: string
@@ -217,6 +217,8 @@ function mapEmployee(e: any, teamId: number): Employee {
     leader_fit: e.leader_fit ?? '',
     flags: e.flags ?? [], strengths: e.strengths ?? [],
     risks: e.risks ?? [], interview_questions: e.interview_questions ?? [],
+    role: (e.role === 'leader' ? 'leader' : 'member') as 'member' | 'leader',
+    leadership_style: e.leadership_style ?? '',
     teamId,
   }
 }
@@ -298,15 +300,14 @@ export default function App() {
   const [modalEmpOpen, setModalEmpOpen] = useState(false)
   const [teamName, setTeamName] = useState('')
   const [teamDesc, setTeamDesc] = useState('')
-  const [teamManagerMbti, setTeamManagerMbti] = useState('')
-  const [teamManagerEnneagram, setTeamManagerEnneagram] = useState('')
-  const [teamLeadershipStyle, setTeamLeadershipStyle] = useState('')
   const [teamNameErr, setTeamNameErr] = useState(false)
   const [empName, setEmpName] = useState('')
   const [empFile, setEmpFile] = useState<File | null>(null)
   const [empText, setEmpText] = useState('')
   const [empLinkedin, setEmpLinkedin] = useState('')
   const [empSubmitting, setEmpSubmitting] = useState(false)
+  const [empAsLeader, setEmpAsLeader] = useState(false)
+  const [empLeadershipStyle, setEmpLeadershipStyle] = useState('')
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null)
   const [recLoading, setRecLoading] = useState(false)
 
@@ -429,9 +430,6 @@ export default function App() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setTeams(data.map((t: any) => ({
         id: t.id, name: t.name, description: t.description,
-        manager_mbti: t.manager_mbti ?? '',
-        manager_enneagram: t.manager_enneagram ?? '',
-        leadership_style: t.leadership_style ?? '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         employees: (t.employees ?? []).map((e: any) => mapEmployee(e, t.id)),
       })))
@@ -481,11 +479,24 @@ export default function App() {
     if (!teamId) return ''
     const team = teams.find(t => t.id === teamId)
     if (!team) return ''
-    const parts: string[] = []
-    if (team.manager_mbti) parts.push(`Lederens MBTI: ${team.manager_mbti}`)
-    if (team.manager_enneagram) parts.push(`Lederens Enneagram-tritype: ${team.manager_enneagram}`)
-    if (team.leadership_style) parts.push(`Lederstil: ${team.leadership_style}`)
+    const leader = team.employees.find(e => e.role === 'leader' && !e._loading && !e._error)
+    if (!leader) return ''
+    const parts: string[] = [`Lederens navn: ${leader.name}`]
+    if (leader.mbti) parts.push(`Lederens MBTI: ${leader.mbti}`)
+    if (leader.enneagram) parts.push(`Lederens Enneagram-tritype: ${leader.enneagram}`)
+    if (leader.leadership_style) parts.push(`Lederstil: ${leader.leadership_style}`)
+    if (leader.typology_summary) parts.push(`Lederens typologi-resume: ${leader.typology_summary}`)
     return parts.join('\n')
+  }
+
+  // Eksklud leder fra team-medlems-context (de behandles separat som leder)
+  function buildTeamContextMembersOnly(teamId: number | null | undefined): string {
+    if (!teamId) return ''
+    const team = teams.find(t => t.id === teamId)
+    if (!team) return ''
+    const members = team.employees.filter(e => !e._loading && !e._error && e.mbti && e.role !== 'leader')
+    if (members.length === 0) return ''
+    return members.map(e => `- ${e.name}: ${e.mbti}${e.enneagram ? ` ${e.enneagram}` : ''}`).join('\n')
   }
 
   function buildRoleContext(job: Job | undefined): string {
@@ -507,7 +518,7 @@ export default function App() {
     }))
     try {
       const job = jobs.find(j => j.id === jobId)
-      const team_context  = buildTeamContext(job?.team_id)
+      const team_context  = buildTeamContextMembersOnly(job?.team_id)
       const leader_context = buildLeaderContext(job?.team_id)
       const role_context   = buildRoleContext(job)
       const res = await callAnalyze(content, name, { team_context, leader_context, role_context })
@@ -725,9 +736,6 @@ export default function App() {
       const { data, error } = await supabase.from('teams').insert({
         name: teamName.trim(), description: teamDesc.trim(),
         org_id: orgId,
-        manager_mbti: teamManagerMbti.toUpperCase().trim(),
-        manager_enneagram: teamManagerEnneagram.trim(),
-        leadership_style: teamLeadershipStyle,
       }).select().single()
       console.log('[createTeam] result:', { data, error })
       if (error) {
@@ -739,7 +747,6 @@ export default function App() {
       const t: Team = { ...data, employees: [] }
       setTeams(prev => [t, ...prev])
       setModalTeamOpen(false); setTeamName(''); setTeamDesc(''); setTeamNameErr(false); setTeamErr('')
-      setTeamManagerMbti(''); setTeamManagerEnneagram(''); setTeamLeadershipStyle('')
       openTeam(t.id)
     } catch (ex: unknown) {
       const msg = ex instanceof Error ? ex.message : String(ex)
@@ -748,29 +755,34 @@ export default function App() {
     }
   }
 
-  function openEmpModal() { setEmpName(''); setEmpFile(null); setEmpText(''); setEmpLinkedin(''); setModalEmpOpen(true) }
+  function openEmpModal(asLeader = false) {
+    setEmpName(''); setEmpFile(null); setEmpText(''); setEmpLinkedin('')
+    setEmpAsLeader(asLeader); setEmpLeadershipStyle('')
+    setModalEmpOpen(true)
+  }
 
   async function submitEmpModal() {
     if (!empText && !empFile && !empLinkedin) { alert('Tilføj et CV, tekst eller LinkedIn URL.'); return }
+    if (empAsLeader && !empLeadershipStyle) { alert('Vælg en lederstil.'); return }
     setEmpSubmitting(true)
-    let content = '', name = empName.trim() || 'Medarbejder'
+    let content = '', name = empName.trim() || (empAsLeader ? 'Leder' : 'Medarbejder')
     if (empFile) {
       uploadToSupabase(empFile, name)
       try { content = await readFileText(empFile) } catch { content = '' }
     } else if (empText) { content = empText
     } else if (empLinkedin) { content = 'LinkedIn: ' + empLinkedin; if (!empName.trim()) name = nameFromUrl(empLinkedin) }
     setModalEmpOpen(false); setEmpSubmitting(false)
-    await analyzeAndAddToTeam(content, name, currentTeamId!)
+    await analyzeAndAddToTeam(content, name, currentTeamId!, empAsLeader, empLeadershipStyle)
   }
 
-  async function analyzeAndAddToTeam(content: string, name: string, teamId: number) {
+  async function analyzeAndAddToTeam(content: string, name: string, teamId: number, asLeader = false, leadershipStyle = '') {
     const tempId = -(Date.now() + Math.random())
     const grad = GRADS[analysisCount.current++ % GRADS.length]
     setTeams(prev => prev.map(t => t.id !== teamId ? t : {
-      ...t, employees: [...t.employees, { id: tempId, name, _loading: true } as Employee],
+      ...t, employees: [...t.employees, { id: tempId, name, _loading: true, role: asLeader ? 'leader' : 'member' } as Employee],
     }))
     try {
-      const team_context = buildTeamContext(teamId)
+      const team_context = buildTeamContextMembersOnly(teamId)
       const leader_context = buildLeaderContext(teamId)
       const res = await callAnalyze(content, name, { team_context, leader_context })
       const score = res.score ?? rnd(50, 90)
@@ -791,6 +803,8 @@ export default function App() {
         role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : null,
         role_fit_reasoning: res.role_fit_reasoning ?? '',
         leader_fit: res.leader_fit ?? '',
+        role: asLeader ? 'leader' : 'member',
+        leadership_style: asLeader ? leadershipStyle : '',
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
         strengths: res.typology_strengths ?? res.strengths ?? [],
         risks: res.typology_weaknesses ?? res.risks ?? [],
@@ -801,7 +815,7 @@ export default function App() {
       }
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], role_fit_score: res.role_fit_score, role_fit_reasoning: res.role_fit_reasoning ?? '', leader_fit: res.leader_fit ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], role: asLeader ? 'leader' : 'member', leadership_style: asLeader ? leadershipStyle : '', teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -925,7 +939,17 @@ export default function App() {
   } else if (page === 'team-detail' && currentTeam) {
     backHidden = false
     breadcrumb = (<><span className="tb-crumb" onClick={showTeams}>Teams</span><span className="tb-crumb-sep">/</span><span className="tb-crumb active">{currentTeam.name}</span></>)
-    topbarActions = (<><button className="tb-btn tb-btn-ghost" onClick={async () => { if (!confirm(`Slet team "${currentTeam.name}" og alle medarbejdere?`)) return; await supabase.from('employees').delete().eq('team_id', currentTeam.id); const { error } = await supabase.from('teams').delete().eq('id', currentTeam.id); if (error) { alert('Kunne ikke slette: ' + error.message); return } setTeams(prev => prev.filter(t => t.id !== currentTeam.id)); showTeams() }} style={{ color: 'var(--danger)' }}>Slet team</button><button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button><button className="tb-btn tb-btn-primary" onClick={openEmpModal}>+ Tilføj medarbejder</button></>)
+    {
+      const hasLeader = currentTeam.employees.some(e => e.role === 'leader' && !e._loading && !e._error)
+      topbarActions = (
+        <>
+          <button className="tb-btn tb-btn-ghost" onClick={async () => { if (!confirm(`Slet team "${currentTeam.name}" og alle medarbejdere?`)) return; await supabase.from('employees').delete().eq('team_id', currentTeam.id); const { error } = await supabase.from('teams').delete().eq('id', currentTeam.id); if (error) { alert('Kunne ikke slette: ' + error.message); return } setTeams(prev => prev.filter(t => t.id !== currentTeam.id)); showTeams() }} style={{ color: 'var(--danger)' }}>Slet team</button>
+          <button className="tb-btn tb-btn-ghost" onClick={() => copyInviteLink('team', currentTeam.id, currentTeam.name)}>{copyLabel[`team-${currentTeam.id}`] || '🔗 Invitationslink'}</button>
+          {!hasLeader && <button className="tb-btn tb-btn-ghost" onClick={() => openEmpModal(true)}>+ Tilføj leder</button>}
+          <button className="tb-btn tb-btn-primary" onClick={() => openEmpModal(false)}>+ Tilføj medarbejder</button>
+        </>
+      )
+    }
   } else if (page === 'members') {
     breadcrumb = <span className="tb-crumb active">Medlemmer</span>
     topbarActions = null
@@ -1524,17 +1548,42 @@ export default function App() {
                   {currentTeam.description}
                 </div>
               )}
-              {currentTeam.employees.length === 0 ? (
-                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--m2)', fontSize: 13 }}>
-                  <div>Ingen medarbejdere endnu — tilføj den første</div>
-                </div>
-              ) : (
-                <div className="jobs-grid">
-                  {currentTeam.employees.map(e => (
-                    <CandCard key={e.id} c={{ ...e, jobId: e.teamId }} onClick={() => openEmployeeProfile(e.id)} />
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const leader = currentTeam.employees.find(e => e.role === 'leader')
+                const members = currentTeam.employees.filter(e => e.role !== 'leader')
+                return (
+                  <>
+                    {leader && (
+                      <div style={{ marginBottom: 24 }}>
+                        <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 10, fontWeight: 600 }}>
+                          ★ Leder{leader.leadership_style ? ` — ${leader.leadership_style} stil` : ''}
+                        </div>
+                        <div style={{ background: 'var(--s1)', border: '2px solid var(--accent)', borderRadius: 14, padding: 4 }}>
+                          <CandCard c={{ ...leader, jobId: leader.teamId }} onClick={() => openEmployeeProfile(leader.id)} />
+                        </div>
+                      </div>
+                    )}
+                    {members.length === 0 && !leader ? (
+                      <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--m2)', fontSize: 13 }}>
+                        <div>Ingen medarbejdere endnu — tilføj den første eller en leder</div>
+                      </div>
+                    ) : members.length > 0 ? (
+                      <>
+                        {leader && (
+                          <div style={{ fontSize: 11, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10, fontWeight: 500 }}>
+                            Medarbejdere ({members.length})
+                          </div>
+                        )}
+                        <div className="jobs-grid">
+                          {members.map(e => (
+                            <CandCard key={e.id} c={{ ...e, jobId: e.teamId }} onClick={() => openEmployeeProfile(e.id)} />
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>
@@ -1737,43 +1786,8 @@ export default function App() {
               <textarea className="modal-textarea" rows={3} placeholder="Hvad laver dette team?" value={teamDesc} onChange={e => setTeamDesc(e.target.value)} />
             </div>
 
-            {/* Leder-kontekst — bruges af AI til at vurdere kollaborations-fit */}
-            <div style={{ marginTop: 8, padding: '14px 0 0', borderTop: '1px solid var(--b1)' }}>
-              <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4, fontWeight: 600 }}>Leder-kontekst (valgfri)</div>
-              <div style={{ fontSize: 12, color: 'var(--m1)', marginBottom: 12 }}>AI'en bruger lederstil til at forudsige hvor godt kandidater fungerer under denne leder.</div>
-            </div>
-            <div className="modal-field">
-              <div className="modal-label">Lederens MBTI</div>
-              <input
-                className="modal-input"
-                placeholder="fx INTJ"
-                value={teamManagerMbti}
-                onChange={e => setTeamManagerMbti(e.target.value.toUpperCase())}
-                maxLength={4}
-                style={{ fontFamily: 'monospace', letterSpacing: '2px' }}
-              />
-            </div>
-            <div className="modal-field">
-              <div className="modal-label">Lederens Enneagram-tritype</div>
-              <input
-                className="modal-input"
-                placeholder="fx 514"
-                value={teamManagerEnneagram}
-                onChange={e => setTeamManagerEnneagram(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
-                style={{ fontFamily: 'monospace', letterSpacing: '2px' }}
-              />
-            </div>
-            <div className="modal-field">
-              <div className="modal-label">Lederstil</div>
-              <select className="modal-select" value={teamLeadershipStyle} onChange={e => setTeamLeadershipStyle(e.target.value)}>
-                <option value="">Vælg stil</option>
-                <option value="Coaching">Coaching — vejleder og udvikler</option>
-                <option value="Demokratisk">Demokratisk — beslutninger sammen</option>
-                <option value="Autoritær">Autoritær — top-down, klar retning</option>
-                <option value="Laissez-faire">Laissez-faire — stor frihed</option>
-                <option value="Servant">Servant — støtter teamet</option>
-                <option value="Visionær">Visionær — sætter retning og inspirerer</option>
-              </select>
+            <div style={{ marginTop: 4, padding: '12px 14px', background: 'var(--s2)', border: '1px dashed var(--b1)', borderRadius: 9, fontSize: 12, color: 'var(--m1)', lineHeight: 1.5 }}>
+              💡 Du kan tilføje en <strong>leder</strong> til teamet bagefter — fra team-siden. Lederens profil bruges automatisk som leder-kontekst når nye kandidater analyseres.
             </div>
           </div>
           {teamErr && <div style={{ padding: '8px 12px', background: 'var(--bd-bg)', color: 'var(--bd-text)', borderRadius: 8, fontSize: 12, margin: '0 20px 12px' }}>{teamErr}</div>}
@@ -1784,16 +1798,31 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── MODAL: TILFØJ MEDARBEJDER ── */}
+      {/* ── MODAL: TILFØJ MEDARBEJDER / LEDER ── */}
       <div className={`modal-backdrop${modalEmpOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget) setModalEmpOpen(false) }}>
         <div className="modal">
           <div className="modal-header">
-            <div className="modal-title">Tilføj medarbejder{currentTeam ? ` — ${currentTeam.name}` : ''}</div>
+            <div className="modal-title">{empAsLeader ? 'Tilføj leder' : 'Tilføj medarbejder'}{currentTeam ? ` — ${currentTeam.name}` : ''}</div>
             <div className="modal-close" onClick={() => setModalEmpOpen(false)}>✕</div>
           </div>
           <div className="modal-body">
+            {empAsLeader && (
+              <div className="modal-field">
+                <div className="modal-label">Lederstil *</div>
+                <select className="modal-select" value={empLeadershipStyle} onChange={e => setEmpLeadershipStyle(e.target.value)}>
+                  <option value="">Vælg stil</option>
+                  <option value="Coaching">Coaching — vejleder og udvikler</option>
+                  <option value="Demokratisk">Demokratisk — beslutninger sammen</option>
+                  <option value="Autoritær">Autoritær — top-down, klar retning</option>
+                  <option value="Laissez-faire">Laissez-faire — stor frihed</option>
+                  <option value="Servant">Servant — støtter teamet</option>
+                  <option value="Visionær">Visionær — sætter retning og inspirerer</option>
+                </select>
+                <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 4 }}>MBTI + Enneagram udledes automatisk fra CV'et</div>
+              </div>
+            )}
             <div className="modal-field">
-              <div className="modal-label">Medarbejderens navn (valgfrit)</div>
+              <div className="modal-label">{empAsLeader ? 'Lederens' : 'Medarbejderens'} navn (valgfrit)</div>
               <input className="modal-input" placeholder="Fornavn Efternavn" value={empName} onChange={e => setEmpName(e.target.value)} />
             </div>
             <div className="modal-field">
