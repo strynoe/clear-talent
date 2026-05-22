@@ -17,6 +17,10 @@ import { scoreClass, verdictFromScore } from '@/utils/scoring'
 import { BarRow } from '@/components/ui/BarRow'
 import { TypologyExplainer } from '@/components/ui/TypologyExplainer'
 import { CandidateCard as CandCard } from '@/components/ui/CandidateCard'
+import { MbtiTraitBars } from '@/components/ui/MbtiTraitBars'
+
+// Feature-komponenter
+import { TeamBalanceMatrix } from '@/features/teams/components/TeamBalanceMatrix'
 
 const initialJobs: Job[] = []
 
@@ -859,9 +863,17 @@ export default function App() {
 
                   {/* Hverdagsforklaring */}
                   {c.typology_summary && (
-                    <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
+                    <p style={{ margin: '0 0 18px', fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
                       {c.typology_summary}
                     </p>
+                  )}
+
+                  {/* Bidirectional MBTI trait bars */}
+                  {c.mbti && c.mbti.length === 4 && (
+                    <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--bg)', border: '1px solid var(--b1)', borderRadius: 12 }}>
+                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 12, fontWeight: 600 }}>MBTI-præferencer</div>
+                      <MbtiTraitBars mbti={c.mbti} />
+                    </div>
                   )}
 
                   {/* Expandable detaljeret forklaring */}
@@ -1369,8 +1381,15 @@ export default function App() {
           {currentTeam && (
             <div className="jobs-wrap">
               {currentTeam.description && (
-                <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--s1)', borderRadius: 10, border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
+                <div style={{ marginBottom: 20, padding: '14px 18px', background: 'var(--s1)', borderRadius: 12, border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
                   {currentTeam.description}
+                </div>
+              )}
+
+              {/* Team Balance Matrix — visuel oversigt over MBTI-fordeling */}
+              {currentTeam.employees.filter(e => !e._loading && !e._error).length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <TeamBalanceMatrix employees={currentTeam.employees} />
                 </div>
               )}
               {(() => {
