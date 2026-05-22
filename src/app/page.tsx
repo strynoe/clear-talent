@@ -4,196 +4,21 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-// ─── Types ────────────────────────────────────────────────
-interface Bar { l: string; v: number }
-interface Flag { severity: 'red' | 'warn' | 'ok'; text: string }
-interface Typology {
-  mbti: string; enneagram: string
-  typology_summary: string; detailed_explanation: string
-  typology_strengths: string[]; typology_weaknesses: string[]
-  collab_strengths: string[]; collab_risks: string[]
-  role_fit_score?: number; role_fit_reasoning?: string
-  leader_fit?: string
-}
-interface Candidate extends Typology {
-  id: number; name: string; score: number
-  grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  personal_bio: string; flags: Flag[]; interview_questions: string[]
-  strengths: string[]; risks: string[]; jobId: number
-  _loading?: boolean; _error?: string
-}
-interface Job {
-  id: number; title: string; dept: string; type: string
-  status: 'active' | 'paused'; candidates: Candidate[]
-  team_id?: number | null; description?: string
-  hard_skills?: string; success_criteria?: string; experience_level?: string
-}
-interface Employee extends Typology {
-  id: number; name: string; score: number
-  grad: string; bars: Bar[]; verdict: string; headline: string; summary: string
-  personal_bio: string; flags: Flag[]; interview_questions: string[]
-  strengths: string[]; risks: string[]; teamId: number
-  role: 'member' | 'leader'; leadership_style: string
-  _loading?: boolean; _error?: string
-}
-interface Team {
-  id: number; name: string; description: string; employees: Employee[]
-}
-interface Recommendation {
-  reasoning: string; gap_analysis: string
-  team_strengths?: string; interview_focus?: string[]
-}
-interface QueueItem { id: number; type: 'file' | 'linkedin' | 'text'; name: string; file?: File; content?: string }
-type Page = 'jobs' | 'job-detail' | 'cv' | 'cand-profile' | 'teams' | 'team-detail' | 'employee-profile' | 'members'
+// Typer (delt med resten af app'en)
+import type { Bar, Flag, Typology, Candidate, Job, Employee, Team, Recommendation, QueueItem, Member, Page } from '@/types'
 
-interface Member { user_id: string; email: string; role: 'owner' | 'member'; status: 'pending' | 'active'; created_at: string }
+// Konstanter og helpers (udtrukket til /utils for genbrug)
+import { ALL_METRICS, GRADS } from '@/utils/constants'
+import { rnd, shuffle } from '@/utils/random'
+import { initials, nameFromUrl, readFileText } from '@/utils/format'
+import { scoreClass, verdictFromScore } from '@/utils/scoring'
 
-// (Det tidligere 8-type-system er fjernet helt — MBTI + Enneagram er den nye teori)
-const GRADS = [
-  'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
-  'linear-gradient(135deg,#8a3a6a,#aa5a8a)', 'linear-gradient(135deg,#3a5a8a,#5a7aaa)',
-  'linear-gradient(135deg,#6a3a3a,#8a5a5a)', 'linear-gradient(135deg,#3a6a8a,#5a8aaa)',
-  'linear-gradient(135deg,#6a5a3a,#8a7a5a)', 'linear-gradient(135deg,#5a6a3a,#7a8a5a)',
-]
-
-// ─── Helpers ─────────────────────────────────────────────
-const scoreClass  = (s: number) => s >= 80 ? 's-ok' : s >= 60 ? 's-warn' : 's-bad'
-const verdictFromScore = (s: number) => s >= 80 ? 'Anbefalet' : s >= 60 ? 'Forsigtighed' : 'Frarådet'
-const vbarCls     = (v: string) => v === 'Anbefalet' ? 'vbar-ok' : v === 'Forsigtighed' ? 'vbar-warn' : 'vbar-bad'
-const vtxtCls     = (v: string) => v === 'Anbefalet' ? 'vtxt-ok' : v === 'Forsigtighed' ? 'vtxt-warn' : 'vtxt-bad'
-const barCls      = (v: number) => v >= 75 ? 'bf-g' : v >= 55 ? 'bf-b' : v >= 38 ? 'bf-w' : 'bf-d'
-const valCls      = (v: number) => v < 38 ? 'v-bad' : v < 55 ? 'v-warn' : ''
-const rnd         = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
-const shuffle     = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
-const initials    = (name: string) => name.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase()
-const nameFromUrl = (url: string) => {
-  const m = url.match(/linkedin\.com\/in\/([^/?]+)/)
-  return m ? m[1].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'LinkedIn Kandidat'
-}
-function readFileText(file: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader()
-    r.onload = e => res(e.target!.result as string)
-    r.onerror = () => rej(new Error('Kunne ikke læse filen'))
-    r.readAsText(file)
-  })
-}
-
-// ─── Initial data ────────────────────────────────────────
-const ALL_METRICS = ['Initiativ','Kommunikation','Samarbejde','Struktur','Analytisk tænkning','Fremdrift','Empati','Tilpasningsevne','Beslutningsevne','Stresshåndtering']
+// Genanvendelige UI-komponenter
+import { BarRow } from '@/components/ui/BarRow'
+import { TypologyExplainer } from '@/components/ui/TypologyExplainer'
+import { CandidateCard as CandCard } from '@/components/ui/CandidateCard'
 
 const initialJobs: Job[] = []
-
-// ─── Small components ────────────────────────────────────
-function TypologyExplainer({ text }: { text: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div style={{ marginTop: 14, border: '1px solid var(--b1)', borderRadius: 10, overflow: 'hidden', background: 'var(--s2)' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', background: 'transparent', border: 'none', padding: '11px 14px',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 12,
-          fontWeight: 500, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '.8px',
-        }}
-      >
-        <span>{open ? 'Skjul' : 'Vis'} detaljeret forklaring</span>
-        <span style={{ fontSize: 14, transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-      </button>
-      {open && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--b1)' }}>
-          <p style={{ margin: '14px 0 0', fontSize: 13, color: 'var(--ink)', lineHeight: 1.75, fontWeight: 300 }}>
-            {text}
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function BarRow({ bar, prefix }: { bar: Bar; prefix: 'cc' | 'cp' }) {
-  const cls = prefix === 'cc' ? { row:'cc-bar-row', meta:'cc-bar-meta', lbl:'cc-bar-label', val:'cc-bar-val', track:'bar-track', fill:'bar-fill' }
-                              : { row:'cp-bar-row', meta:'cp-bar-meta', lbl:'cp-bar-label', val:'cp-bar-val', track:'cp-bar-track', fill:'cp-bar-fill' }
-  return (
-    <div className={cls.row}>
-      <div className={cls.meta}>
-        <span className={cls.lbl}>{bar.l}</span>
-        <span className={`${cls.val} ${valCls(bar.v)}`}>{bar.v}%</span>
-      </div>
-      <div className={cls.track}>
-        <div className={`${cls.fill} ${barCls(bar.v)}`} style={{ '--w': `${bar.v}%` } as React.CSSProperties} />
-      </div>
-    </div>
-  )
-}
-
-function CandCard({ c, onClick }: { c: Candidate; onClick: () => void }) {
-  if (c._loading) {
-    return (
-      <div className="cand-card" style={{ pointerEvents: 'none' }}>
-        {/* Header: avatar + navn */}
-        <div className="cc-header">
-          <div className="cc-avatar" style={{ background: 'var(--s3)' }} />
-          <div className="cc-nameblock" style={{ flex: 1, gap: 6, display: 'flex', flexDirection: 'column' }}>
-            <div className="skel" style={{ width: '60%', height: 12 }} />
-            <div className="skel" style={{ width: '80%', height: 9 }} />
-          </div>
-        </div>
-        {/* Bars */}
-        <div className="cc-bars" style={{ gap: 10 }}>
-          {[72, 55, 85].map((w, i) => (
-            <div key={i} className="cc-bar-row">
-              <div className="cc-bar-meta">
-                <div className="skel" style={{ width: `${w}%`, height: 9 }} />
-              </div>
-              <div className="bar-track">
-                <div className="skel" style={{ width: '100%', height: '100%', borderRadius: 4 }} />
-              </div>
-            </div>
-          ))}
-        </div>
-        {/* Footer */}
-        <div className="cc-footer">
-          <div className="skel" style={{ width: 90, height: 10 }} />
-          <div className="skel" style={{ width: 70, height: 10 }} />
-        </div>
-      </div>
-    )
-  }
-  if (c._error) {
-    return <div className="err-row">Fejl ved analyse af {c.name}: {c._error}</div>
-  }
-  return (
-    <div className="cand-card" onClick={onClick}>
-      <div className="cc-header">
-        <div className="cc-avatar" style={{ background: c.grad }}>{initials(c.name)}</div>
-        <div className="cc-nameblock">
-          <div className="cc-nameline">
-            <div className="cc-name">{c.name}</div>
-            <div className={`cc-score ${scoreClass(c.score)}`}>{c.score}</div>
-          </div>
-          <div className="cc-role">{c.headline}</div>
-        </div>
-      </div>
-      <div className="cc-bars">
-        {c.bars.map((b, i) => <BarRow key={i} bar={b} prefix="cc" />)}
-      </div>
-      <div className="cc-footer">
-        {(c.mbti || c.enneagram) ? (
-          <span style={{ padding: '3px 9px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 5, fontSize: 11, fontWeight: 700, letterSpacing: '1px', fontFamily: 'monospace' }}>
-            {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
-          </span>
-        ) : <span />}
-        <div className="verdict-pill">
-          <div className={`vbar ${vbarCls(c.verdict)}`} />
-          <span className={vtxtCls(c.verdict)}>{c.verdict}</span>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Main app ────────────────────────────────────────────
 // ── DB helpers ───────────────────────────────────────────
