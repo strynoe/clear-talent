@@ -88,7 +88,9 @@ export default function App() {
   const [orgStatus, setOrgStatus] = useState<'none' | 'pending' | 'active' | 'loading'>('loading')
   const [members, setMembers] = useState<Member[]>([])
   const [currentUserId, setCurrentUserId] = useState<string>('')
-  const [page, setPage] = useState<Page>('jobs')
+  const [userEmail, setUserEmail] = useState('')
+  const [userDisplayName, setUserDisplayName] = useState('')
+  const [page, setPage] = useState<Page>('dashboard')
   const [jobs, setJobs] = useState<Job[]>(initialJobs)
   const [currentJobId, setCurrentJobId] = useState<number | null>(null)
   const [currentCandId, setCurrentCandId] = useState<number | null>(null)
@@ -174,8 +176,13 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const res = await supabase.auth.getUser()
-      const id = res.data?.user?.id
-      if (id) setCurrentUserId(id)
+      const u = res.data?.user
+      if (u) {
+        setCurrentUserId(u.id)
+        setUserEmail(u.email ?? '')
+        const meta = u.user_metadata ?? {}
+        setUserDisplayName(meta.full_name ?? meta.name ?? meta.display_name ?? '')
+      }
     })()
   }, [supabase])
 
@@ -400,6 +407,48 @@ export default function App() {
   const currentTeam = teams.find(t => t.id === currentTeamId) ?? null
   const currentEmployee = currentTeam?.employees.find(e => e.id === currentEmployeeId) ?? null
 
+  // ── Dashboard derived data ──
+  const userFirstName = useMemo(() => {
+    if (userDisplayName) return userDisplayName.split(' ')[0]
+    if (!userEmail) return orgName ? orgName.split(' ')[0] : 'dig'
+    const local = userEmail.split('@')[0]
+    const parts = local.split(/[._\-+]/)
+    const first = parts[0]
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase()
+  }, [userDisplayName, userEmail, orgName])
+
+  const recentCandidates = useMemo(() => (
+    jobs.flatMap(j =>
+      j.candidates
+        .filter(c => !c._loading && !c._error)
+        .map(c => ({ ...c, jobTitle: j.title }))
+    ).slice(0, 8)
+  ), [jobs])
+
+  const teamInsights = useMemo(() => {
+    const insights: Array<{ text: string; type: 'warn' | 'ok' | 'info' }> = []
+    for (const team of teams) {
+      const valid = team.employees.filter(e => !e._loading && !e._error && e.mbti && e.mbti.length === 4)
+      if (valid.length < 2) continue
+      const js = valid.filter(e => e.mbti.endsWith('J')).length
+      const ps = valid.filter(e => e.mbti.endsWith('P')).length
+      const ts = valid.filter(e => e.mbti[2] === 'T').length
+      const fs = valid.filter(e => e.mbti[2] === 'F').length
+      const is_ = valid.filter(e => e.mbti.startsWith('I')).length
+      const es = valid.filter(e => e.mbti.startsWith('E')).length
+      if (ps === 0 && js >= 2) insights.push({ text: `${team.name} mangler fleksible P-typer`, type: 'warn' })
+      if (js === 0 && ps >= 2) insights.push({ text: `${team.name} mangler strukturerede J-typer`, type: 'warn' })
+      if (fs === 0 && ts >= 2) insights.push({ text: `${team.name} mangler empatiske F-typer`, type: 'warn' })
+      if (ts === 0 && fs >= 2) insights.push({ text: `${team.name} domineres af følende F-typer`, type: 'info' })
+      if (is_ === 0) insights.push({ text: `${team.name} mangler introvertstyper`, type: 'info' })
+      if (es === 0) insights.push({ text: `${team.name} mangler ekstrovertstyper`, type: 'info' })
+      if (js > 0 && ps > 0 && is_ > 0 && es > 0 && ts > 0 && fs > 0) insights.push({ text: `${team.name} er typologisk veldiversificeret`, type: 'ok' })
+    }
+    if (insights.length === 0) return [{ text: 'Tilføj medarbejdere til teams for at se indsigter', type: 'info' as const }]
+    return insights.slice(0, 6)
+  }, [teams])
+
+  function showDashboard() { setPage('dashboard') }
   function showJobs() { setPage('jobs'); setCurrentJobId(null); setCurrentCandId(null) }
   function openJob(id: number) { setCurrentJobId(id); setPage('job-detail'); setCurrentCandId(null) }
   function openCandidateProfile(candId: number) { setCurrentCandId(candId); setPage('cand-profile') }
@@ -738,7 +787,10 @@ export default function App() {
   // ── Topbar content ──
   let backHidden = true, breadcrumb: React.ReactNode, topbarActions: React.ReactNode
 
-  if (page === 'jobs') {
+  if (page === 'dashboard') {
+    breadcrumb = <span className="tb-crumb active">Dashboard</span>
+    topbarActions = null
+  } else if (page === 'jobs') {
     breadcrumb = <span className="tb-crumb active">Åbne stillinger</span>
     topbarActions = <button className="tb-btn tb-btn-primary" onClick={() => setModalJobOpen(true)}>+ Opret stilling</button>
   } else if (page === 'job-detail' && currentJob) {
@@ -1055,6 +1107,9 @@ export default function App() {
           <div><div className="sb-name">TypeSystems</div><div className="sb-sub">People Decision Intelligence</div></div>
         </div>
         <div className="sb-nav">
+          <div className={`sb-item${page === 'dashboard' ? ' active' : ''}`} onClick={showDashboard}>
+            <span className="sb-pip" /><span className="sb-ico">⌂</span>Dashboard
+          </div>
           <div className="sb-sec">Rekruttering</div>
           <div className={`sb-item${page === 'jobs' || page === 'job-detail' || (page === 'cand-profile' && currentJobId) ? (page === 'jobs' ? ' active' : '') : ''}`} onClick={showJobs}>
             <span className="sb-pip" /><span className="sb-ico">◇</span>Åbne stillinger
@@ -1117,6 +1172,130 @@ export default function App() {
           <div className="tb-right">
             <div className="ai-pill">AI AKTIV</div>
             {topbarActions}
+          </div>
+        </div>
+
+        {/* PAGE: DASHBOARD */}
+        <div className={`page${page === 'dashboard' ? ' active' : ''}`} id="page-dashboard">
+          <div className="dash-scroll">
+            <div className="dash-inner">
+
+              {/* Hero */}
+              <div className="dash-hero">
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 8, fontWeight: 600 }}>
+                    {orgName}{orgRole ? ` · ${orgRole === 'owner' ? 'Ejer' : 'Medlem'}` : ''}
+                  </div>
+                  <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.2, margin: 0 }}>
+                    Velkommen tilbage,{' '}
+                    <span style={{ color: 'var(--accent)' }}>{userFirstName}</span>
+                  </h1>
+                  <div style={{ width: 36, height: 3, background: 'linear-gradient(90deg, var(--accent), var(--a2))', borderRadius: 2, marginTop: 10 }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                  <button className="tb-btn tb-btn-ghost" onClick={navCv}>📄 Analysér CV</button>
+                  <button className="tb-btn tb-btn-primary" onClick={() => setModalJobOpen(true)}>+ Opret stilling</button>
+                </div>
+              </div>
+
+              {/* KPI Grid */}
+              <div className="dash-kpi-grid">
+                <div className="dash-kpi-0">
+                  <div className="kpi-card">
+                    <div className="kpi-top">
+                      <div className="kpi-label">Aktive stillinger</div>
+                      <span style={{ fontSize: 16, opacity: .28, flexShrink: 0, marginTop: 1 }}>◇</span>
+                    </div>
+                    <div className="kpi-value">{jobs.filter(j => j.status === 'active').length}</div>
+                    <div className="kpi-sub">{jobs.length} opslag i alt</div>
+                  </div>
+                </div>
+                <div className="dash-kpi-1">
+                  <div className="kpi-card" style={{ borderTopColor: 'var(--a2)' }}>
+                    <div className="kpi-top">
+                      <div className="kpi-label">Kandidater til vurdering</div>
+                      <span style={{ fontSize: 16, opacity: .28, flexShrink: 0, marginTop: 1 }}>👤</span>
+                    </div>
+                    <div className="kpi-value">{jobs.reduce((s, j) => s + j.candidates.filter(c => !c._loading && !c._error).length, 0)}</div>
+                    <div className="kpi-sub">på tværs af stillinger</div>
+                  </div>
+                </div>
+                <div className="dash-kpi-2">
+                  <div className="kpi-card" style={{ borderTopColor: '#c4bde4' }}>
+                    <div className="kpi-top">
+                      <div className="kpi-label">Teams i organisationen</div>
+                      <span style={{ fontSize: 16, opacity: .28, flexShrink: 0, marginTop: 1 }}>⬡</span>
+                    </div>
+                    <div className="kpi-value">{teams.length}</div>
+                    <div className="kpi-sub">{teams.reduce((s, t) => s + t.employees.filter(e => !e._loading && !e._error).length, 0)} medarbejdere</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Split layout */}
+              <div className="dash-main">
+
+                {/* Left 70%: Recent candidates */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                    Seneste kandidat-matches
+                  </div>
+                  {recentCandidates.length === 0 ? (
+                    <div style={{ padding: '32px 20px', textAlign: 'center', background: 'var(--s1)', borderRadius: 12, border: '1.5px dashed var(--b1)', color: 'var(--m2)', fontSize: 13 }}>
+                      <div style={{ fontSize: 22, opacity: .2, marginBottom: 8 }}>👤</div>
+                      Ingen kandidater endnu — opret en stilling og tilføj kandidater
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {recentCandidates.map(c => (
+                        <div
+                          key={`${c.jobId}-${c.id}`}
+                          className="dash-cand-row"
+                          onClick={() => { openJob(c.jobId); openCandidateProfile(c.id) }}
+                        >
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: c.grad, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                            {initials(c.name)}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 13, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--m1)', marginTop: 1 }}>{c.jobTitle}</div>
+                          </div>
+                          {(c.mbti || c.enneagram) && (
+                            <span style={{ padding: '2px 8px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 5, fontSize: 10, fontWeight: 700, letterSpacing: '1px', fontFamily: 'monospace', flexShrink: 0 }}>
+                              {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
+                            </span>
+                          )}
+                          <div style={{ fontFamily: "'Fraunces', serif", fontSize: 15, fontWeight: 700, flexShrink: 0 }} className={scoreClass(c.score)}>{c.score}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right 30%: Team insights */}
+                <div style={{ width: 260, flexShrink: 0 }}>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 14, fontWeight: 700, color: 'var(--ink)', marginBottom: 12 }}>
+                    Organisations Insights
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {teamInsights.map((ins, i) => (
+                      <div key={i} className="dash-insight" style={{
+                        background: ins.type === 'ok' ? 'var(--ok-bg)' : ins.type === 'warn' ? 'var(--wn-bg)' : 'var(--bg)',
+                        borderWidth: 1,
+                        borderStyle: 'solid',
+                        borderColor: ins.type === 'ok' ? '#c0e0c8' : ins.type === 'warn' ? '#e0c8a0' : 'var(--b1)',
+                        borderLeftWidth: 3,
+                        borderLeftColor: ins.type === 'ok' ? 'var(--green)' : ins.type === 'warn' ? 'var(--warn)' : 'var(--a2)',
+                        color: ins.type === 'ok' ? 'var(--ok-text)' : ins.type === 'warn' ? 'var(--wn-text)' : 'var(--m3)',
+                      }}>
+                        {ins.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </div>
         </div>
 

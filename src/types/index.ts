@@ -102,6 +102,7 @@ export interface Member {
 }
 
 export type Page =
+  | 'dashboard'
   | 'jobs'
   | 'job-detail'
   | 'cv'
