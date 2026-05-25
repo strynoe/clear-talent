@@ -1108,11 +1108,11 @@ export default function App() {
         </div>
         <div className="sb-nav">
           <div className={`sb-item${page === 'dashboard' ? ' active' : ''}`} onClick={showDashboard}>
-            <span className="sb-pip" /><span className="sb-ico">⌂</span>Dashboard
+            <span className="sb-ico">⌂</span>Dashboard
           </div>
           <div className="sb-sec">Rekruttering</div>
           <div className={`sb-item${page === 'jobs' || page === 'job-detail' || (page === 'cand-profile' && currentJobId) ? (page === 'jobs' ? ' active' : '') : ''}`} onClick={showJobs}>
-            <span className="sb-pip" /><span className="sb-ico">◇</span>Åbne stillinger
+            <span className="sb-ico">◇</span>Åbne stillinger
           </div>
           {/* Sidebar job list */}
           <div>
@@ -1124,11 +1124,11 @@ export default function App() {
             ))}
           </div>
           <div className={`sb-item${page === 'cv' ? ' active' : ''}`} onClick={navCv}>
-            <span className="sb-pip" /><span className="sb-ico">📄</span>CV Analyse<span className="sb-tag">AI</span>
+            <span className="sb-ico">📄</span>CV Analyse<span className="sb-tag">AI</span>
           </div>
           <div className="sb-sec">Organisation</div>
           <div className={`sb-item${page === 'teams' || page === 'team-detail' || page === 'employee-profile' ? (page === 'teams' ? ' active' : '') : ''}`} onClick={showTeams}>
-            <span className="sb-pip" /><span className="sb-ico">⬡</span>Teams
+            <span className="sb-ico">⬡</span>Teams
           </div>
           {teams.map(t => (
             <div key={t.id} className={`sb-job${currentTeamId === t.id && (page === 'team-detail' || page === 'employee-profile') ? ' active' : ''}`} onClick={() => openTeam(t.id)}>
@@ -1137,22 +1137,29 @@ export default function App() {
             </div>
           ))}
           <div className={`sb-item${page === 'members' ? ' active' : ''}`} onClick={showMembers}>
-            <span className="sb-pip" /><span className="sb-ico">👥</span>Medlemmer
+            <span className="sb-ico">👥</span>Medlemmer
             {pendingCount > 0 && <span className="sb-tag" style={{ background: 'var(--warn)', color: '#fff' }}>{pendingCount}</span>}
           </div>
-          <div className="sb-item dim"><span className="sb-pip" /><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
+          <div className="sb-item dim"><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
         </div>
         <div className="sb-bottom">
           <div className="sb-company">
-            <div className="sb-ca">{(orgName[0] ?? 'O').toUpperCase()}</div>
-            <div><div className="sb-cn">{orgName || 'Organisation'}</div><div className="sb-cp">{orgRole === 'owner' ? 'Ejer' : 'Medlem'}</div></div>
+            <div className="sb-ca">
+              {userDisplayName ? initials(userDisplayName) : (orgName[0] ?? 'U').toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="sb-cn">{userDisplayName || userFirstName || 'Bruger'}</div>
+              <div className="sb-cp">{orgName}{orgRole ? ` · ${orgRole === 'owner' ? 'Ejer' : 'Medlem'}` : ''}</div>
+            </div>
           </div>
-          <button onClick={handleLogout} style={{
-            marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 8,
-            background: 'transparent', border: '1px solid var(--b1)',
-            fontSize: 12, color: 'var(--m1)', fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 500, cursor: 'pointer', transition: 'all .12s',
-          }}
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%', padding: '8px 0', borderRadius: 11,
+              background: 'transparent', border: '1px solid var(--b1)',
+              fontSize: 12, color: 'var(--m1)', fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 500, cursor: 'pointer', transition: 'all .12s',
+            }}
             onMouseEnter={e => { (e.target as HTMLElement).style.color = 'var(--ink)'; (e.target as HTMLElement).style.borderColor = 'var(--b2)' }}
             onMouseLeave={e => { (e.target as HTMLElement).style.color = 'var(--m1)'; (e.target as HTMLElement).style.borderColor = 'var(--b1)' }}
           >
