@@ -1103,16 +1103,16 @@ export default function App() {
       {/* ── SIDEBAR ── */}
       <nav className="sidebar">
         <div className="sb-logo">
-          <div className="sb-icon">🐺</div>
-          <div><div className="sb-name">TypeSystems</div><div className="sb-sub">People Decision Intelligence</div></div>
+          <div className="sb-name">TypeSystems</div>
+          <div className="sb-sub">People Decision Intelligence</div>
         </div>
         <div className="sb-nav">
           <div className={`sb-item${page === 'dashboard' ? ' active' : ''}`} onClick={showDashboard}>
-            <span className="sb-ico">⌂</span>Dashboard
+            Dashboard
           </div>
           <div className="sb-sec">Rekruttering</div>
           <div className={`sb-item${page === 'jobs' || page === 'job-detail' || (page === 'cand-profile' && currentJobId) ? (page === 'jobs' ? ' active' : '') : ''}`} onClick={showJobs}>
-            <span className="sb-ico">◇</span>Åbne stillinger
+            Åbne stillinger
           </div>
           {/* Sidebar job list */}
           <div>
@@ -1124,11 +1124,11 @@ export default function App() {
             ))}
           </div>
           <div className={`sb-item${page === 'cv' ? ' active' : ''}`} onClick={navCv}>
-            <span className="sb-ico">📄</span>CV Analyse<span className="sb-tag">AI</span>
+            CV Analyse<span className="sb-tag">AI</span>
           </div>
           <div className="sb-sec">Organisation</div>
           <div className={`sb-item${page === 'teams' || page === 'team-detail' || page === 'employee-profile' ? (page === 'teams' ? ' active' : '') : ''}`} onClick={showTeams}>
-            <span className="sb-ico">⬡</span>Teams
+            Teams
           </div>
           {teams.map(t => (
             <div key={t.id} className={`sb-job${currentTeamId === t.id && (page === 'team-detail' || page === 'employee-profile') ? ' active' : ''}`} onClick={() => openTeam(t.id)}>
@@ -1137,10 +1137,10 @@ export default function App() {
             </div>
           ))}
           <div className={`sb-item${page === 'members' ? ' active' : ''}`} onClick={showMembers}>
-            <span className="sb-ico">👥</span>Medlemmer
-            {pendingCount > 0 && <span className="sb-tag" style={{ background: 'var(--warn)', color: '#fff' }}>{pendingCount}</span>}
+            Medlemmer
+            {pendingCount > 0 && <span className="sb-tag" style={{ background: 'var(--accent)', color: '#fff' }}>{pendingCount}</span>}
           </div>
-          <div className="sb-item dim"><span className="sb-ico">◈</span>De 8 Types<span className="sb-tag">Snart</span></div>
+          <div className="sb-item dim">De 8 Types<span className="sb-tag">Snart</span></div>
         </div>
         <div className="sb-bottom">
           <div className="sb-company">
@@ -1155,13 +1155,13 @@ export default function App() {
           <button
             onClick={handleLogout}
             style={{
-              width: '100%', padding: '8px 0', borderRadius: 11,
-              background: 'transparent', border: '1px solid var(--b1)',
-              fontSize: 12, color: 'var(--m1)', fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 500, cursor: 'pointer', transition: 'all .12s',
+              width: '100%', padding: '8px 0', borderRadius: 8,
+              background: 'transparent', border: '1px solid rgba(255,255,255,.12)',
+              fontSize: 12, color: 'rgba(255,255,255,.4)', fontFamily: "'DM Sans', sans-serif",
+              fontWeight: 500, cursor: 'pointer', transition: 'all .15s',
             }}
-            onMouseEnter={e => { (e.target as HTMLElement).style.color = 'var(--ink)'; (e.target as HTMLElement).style.borderColor = 'var(--b2)' }}
-            onMouseLeave={e => { (e.target as HTMLElement).style.color = 'var(--m1)'; (e.target as HTMLElement).style.borderColor = 'var(--b1)' }}
+            onMouseEnter={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,.8)'; (e.target as HTMLElement).style.borderColor = 'rgba(255,255,255,.25)' }}
+            onMouseLeave={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,.4)'; (e.target as HTMLElement).style.borderColor = 'rgba(255,255,255,.12)' }}
           >
             Log ud
           </button>
