@@ -17,10 +17,6 @@ import { scoreClass, verdictFromScore } from '@/utils/scoring'
 import { BarRow } from '@/components/ui/BarRow'
 import { TypologyExplainer } from '@/components/ui/TypologyExplainer'
 import { CandidateCard as CandCard } from '@/components/ui/CandidateCard'
-import { MbtiTraitBars } from '@/components/ui/MbtiTraitBars'
-
-// Feature-komponenter
-import { TeamBalanceMatrix } from '@/features/teams/components/TeamBalanceMatrix'
 
 const initialJobs: Job[] = []
 
@@ -863,17 +859,9 @@ export default function App() {
 
                   {/* Hverdagsforklaring */}
                   {c.typology_summary && (
-                    <p style={{ margin: '0 0 18px', fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
+                    <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
                       {c.typology_summary}
                     </p>
-                  )}
-
-                  {/* Bidirectional MBTI trait bars */}
-                  {c.mbti && c.mbti.length === 4 && (
-                    <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--bg)', border: '1px solid var(--b1)', borderRadius: 12 }}>
-                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 12, fontWeight: 600 }}>MBTI-præferencer</div>
-                      <MbtiTraitBars mbti={c.mbti} />
-                    </div>
                   )}
 
                   {/* Expandable detaljeret forklaring */}
@@ -1381,17 +1369,64 @@ export default function App() {
           {currentTeam && (
             <div className="jobs-wrap">
               {currentTeam.description && (
-                <div style={{ marginBottom: 20, padding: '14px 18px', background: 'var(--s1)', borderRadius: 12, border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
+                <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--s1)', borderRadius: 10, border: '1px solid var(--b1)', fontSize: 13, color: 'var(--m1)' }}>
                   {currentTeam.description}
                 </div>
               )}
 
-              {/* Team Balance Matrix — visuel oversigt over MBTI-fordeling */}
-              {currentTeam.employees.filter(e => !e._loading && !e._error).length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <TeamBalanceMatrix employees={currentTeam.employees} />
-                </div>
-              )}
+              {/* Team Balance Matrix — only shown when ≥2 profiled members */}
+              {(() => {
+                const validEmps = currentTeam.employees.filter(e => !e._loading && !e._error && e.mbti && e.mbti.length === 4)
+                if (validEmps.length < 2) return null
+                const dims = [
+                  { left: 'I', right: 'E', leftLabel: 'Introvert', rightLabel: 'Ekstrovert', idx: 0 },
+                  { left: 'N', right: 'S', leftLabel: 'Intuitiv', rightLabel: 'Sansende', idx: 1 },
+                  { left: 'T', right: 'F', leftLabel: 'Tænkende', rightLabel: 'Følende', idx: 2 },
+                  { left: 'J', right: 'P', leftLabel: 'Planlagt', rightLabel: 'Fleksibel', idx: 3 },
+                ]
+                return (
+                  <div className="mbti-section">
+                    <div className="mbti-section-title">Team Balance Matrix — {validEmps.length} profiler</div>
+                    {dims.map(d => {
+                      const leftCount = validEmps.filter(e => e.mbti[d.idx] === d.left).length
+                      const rightCount = validEmps.filter(e => e.mbti[d.idx] === d.right).length
+                      const total = leftCount + rightCount
+                      const leftPct = total > 0 ? (leftCount / total) * 100 : 50
+                      const rightPct = total > 0 ? (rightCount / total) * 100 : 50
+                      const dominant = leftCount > rightCount ? d.leftLabel : rightCount > leftCount ? d.rightLabel : null
+                      return (
+                        <div key={d.left} className="mbti-trait-row">
+                          <div className="mbti-trait-labels">
+                            <span className="mbti-label-left">{d.left} — {d.leftLabel} ({leftCount})</span>
+                            <span className="mbti-label-right">({rightCount}) {d.rightLabel} — {d.right}</span>
+                          </div>
+                          <div className="mbti-bar-wrap">
+                            <div className="mbti-center-mark" />
+                            <div className="mbti-half" style={{ justifyContent: 'flex-end' }}>
+                              <div className="mbti-fill-left" style={{ width: `${leftPct}%` }} />
+                            </div>
+                            <div className="mbti-half">
+                              <div className="mbti-fill-right" style={{ width: `${rightPct}%` }} />
+                            </div>
+                          </div>
+                          <div className="mbti-counts">
+                            <span style={{ color: leftCount > rightCount ? 'var(--m3)' : 'var(--m2)' }}>
+                              {leftCount > rightCount ? '↑ Dominerer' : leftCount === rightCount ? '⇌ Ligevægt' : '↓ Underrep.'}
+                            </span>
+                            <span style={{ color: 'var(--m2)', fontStyle: dominant ? 'normal' : 'italic' }}>
+                              {dominant ? `Team trækker mod ${dominant}` : 'Afbalanceret'}
+                            </span>
+                            <span style={{ color: rightCount > leftCount ? 'var(--m3)' : 'var(--m2)' }}>
+                              {rightCount > leftCount ? '↑ Dominerer' : rightCount === leftCount ? '⇌ Ligevægt' : '↓ Underrep.'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
               {(() => {
                 const leader = currentTeam.employees.find(e => e.role === 'leader')
                 const members = currentTeam.employees.filter(e => e.role !== 'leader')
