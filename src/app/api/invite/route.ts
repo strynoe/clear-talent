@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
     const res = await fetch(
       sbUrl(`invite_links?id=eq.${token}&select=id,type,label,used_at,expires_at&limit=1`),
-      { headers: anonHeaders() }
+      { headers: serviceHeaders() }
     )
     const rows = await res.json()
     if (!Array.isArray(rows) || rows.length === 0) {
