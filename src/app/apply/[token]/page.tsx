@@ -119,7 +119,7 @@ export default function ApplyPage() {
   }
 
   const shell: React.CSSProperties = {
-    minHeight: '100vh', background: 'var(--bg)',
+    height: '100vh', overflowY: 'auto', background: 'var(--bg)',
     fontFamily: "'DM Sans', sans-serif", color: 'var(--ink)',
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     padding: '0 16px 80px',
@@ -149,7 +149,7 @@ export default function ApplyPage() {
   }
 
   if (stage === 'loading') {
-    return <div style={shell}><div style={{ marginTop: 120, color: 'var(--m1)', fontSize: 14 }}>Henter invitation…</div></div>
+    return <div style={{ ...shell, justifyContent: 'center' }}><div style={{ color: 'var(--m1)', fontSize: 14 }}>Henter invitation…</div></div>
   }
   if (stage === 'not-found') return <StatusPage icon="🔍" title="Link ikke fundet" sub="Kontrollér at du har det rigtige link, eller kontakt afsenderen." />
   if (stage === 'expired')   return <StatusPage icon="⏱"  title="Linket er udløbet" sub="Dette invitationslink er ikke længere gyldigt. Kontakt afsenderen for et nyt link." />
@@ -366,7 +366,7 @@ function Logo() {
 function StatusPage({ icon, title, sub }: { icon: string; title: string; sub: string }) {
   return (
     <div style={{
-      minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column',
+      height: '100vh', overflowY: 'auto', background: 'var(--bg)', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', sans-serif",
       padding: '0 24px', textAlign: 'center',
     }}>
