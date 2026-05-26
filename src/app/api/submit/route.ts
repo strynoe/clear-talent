@@ -54,7 +54,7 @@ const GRADS = [
 
 export async function POST(request: Request) {
   try {
-    const { token, name, cv_text } = await request.json()
+    const { token, name, cv_text, cv_pdf_base64, linkedin_url, application_text } = await request.json()
     if (!token || !name?.trim()) {
       return Response.json({ error: 'Navn og token er påkrævet' }, { status: 400 })
     }
@@ -74,14 +74,10 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invitationslinket er udløbet' }, { status: 410 })
     }
 
-    const content = cv_text?.trim()
-      ? `CV / Baggrund:\n${cv_text.trim()}`
-      : '(intet CV indsendt)'
-
     // AI analysis
     let result = mockResult(name.trim())
 
-    // Fetch team context (other members of same job's team or same team)
+    // Fetch team context (other members' MBTI for comparison)
     let teamContext = ''
     try {
       if (invite.type === 'team') {
@@ -105,7 +101,13 @@ export async function POST(request: Request) {
     } catch { /* ignore team context failure */ }
 
     if (process.env.ANTHROPIC_API_KEY) {
-      const sys = `Du er ekspert i MBTI (Myers-Briggs) og Enneagrammet med tritype-teori. Din opgave er at scanne en kandidats CV og udlede deres sandsynlige typekombination.
+      const sys = `Du er ekspert i MBTI (Myers-Briggs) og Enneagrammet med tritype-teori. Din opgave er at analysere en kandidat og udlede deres sandsynlige typekombination.
+
+Du vil modtage én eller flere af følgende informationstyper:
+- Et PDF-dokument (CV/Resume) — læs det grundigt
+- Rå CV-tekst
+- LinkedIn URL (brug som kontekst for karrieremønster)
+- Ansøgning/motivationsbrev — er særlig værdifuldt for typologisk analyse
 
 ━━━ TEORIGRUNDLAG ━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -152,6 +154,26 @@ Returnér KUN valid JSON uden markdown:
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
   "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","...2","...3"]
 }`
+
+      // Build user message — supports PDF document block or plain text
+      const textParts: string[] = [`Kandidat/medarbejder: ${name.trim()}`]
+      if (linkedin_url?.trim()) textParts.push(`LinkedIn: ${linkedin_url.trim()}`)
+      if (cv_text?.trim()) textParts.push(`CV/Baggrund:\n${cv_text.trim()}`)
+      if (application_text?.trim()) textParts.push(`Ansøgning/motivation:\n${application_text.trim()}`)
+      if (teamContext) textParts.push(`EKSISTERENDE TEAMMEDLEMMER:\n${teamContext}`)
+      const textContent = textParts.join('\n\n')
+
+      type ContentBlock =
+        | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
+        | { type: 'text'; text: string }
+
+      const messageContent: string | ContentBlock[] = cv_pdf_base64
+        ? [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: cv_pdf_base64 } },
+            { type: 'text', text: textContent },
+          ]
+        : textContent
+
       try {
         const resp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -164,7 +186,7 @@ Returnér KUN valid JSON uden markdown:
             model: 'claude-sonnet-4-20250514',
             max_tokens: 1600,
             system: sys,
-            messages: [{ role: 'user', content: `Kandidat/medarbejder: ${name.trim()}\n\n${content}${teamContext ? `\n\nEKSISTERENDE TEAMMEDLEMMER:\n${teamContext}` : ''}` }],
+            messages: [{ role: 'user', content: messageContent }],
           }),
         })
         if (resp.ok) {

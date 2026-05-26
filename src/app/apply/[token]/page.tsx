@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 
 type Stage = 'loading' | 'not-found' | 'expired' | 'used' | 'form' | 'submitting' | 'done'
+type CvTab = 'upload' | 'paste'
 
 interface InviteInfo { type: 'job' | 'team'; label: string; used: boolean }
 
@@ -11,8 +12,21 @@ export default function ApplyPage() {
   const { token } = useParams<{ token: string }>()
   const [stage, setStage] = useState<Stage>('loading')
   const [info, setInfo] = useState<InviteInfo | null>(null)
+
+  // Personal info
   const [name, setName] = useState('')
+  const [linkedinUrl, setLinkedinUrl] = useState('')
+
+  // CV
+  const [cvTab, setCvTab] = useState<CvTab>('upload')
   const [cvText, setCvText] = useState('')
+  const [cvFile, setCvFile] = useState<File | null>(null)
+  const [cvPdfBase64, setCvPdfBase64] = useState('')
+  const [cvFileText, setCvFileText] = useState('')
+
+  // Application letter
+  const [applicationText, setApplicationText] = useState('')
+
   const [errMsg, setErrMsg] = useState('')
   const topRef = useRef<HTMLDivElement>(null)
 
@@ -29,20 +43,74 @@ export default function ApplyPage() {
       .catch(() => setStage('not-found'))
   }, [token])
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 4 * 1024 * 1024) {
+      setErrMsg('Filen er for stor. Maksimum er 4 MB.')
+      return
+    }
+    setCvFile(file)
+    setCvPdfBase64('')
+    setCvFileText('')
+    setErrMsg('')
+
+    if (file.type === 'application/pdf') {
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const dataUrl = ev.target?.result as string
+        setCvPdfBase64(dataUrl.split(',')[1])
+      }
+      reader.readAsDataURL(file)
+    } else {
+      const reader = new FileReader()
+      reader.onload = ev => setCvFileText(ev.target?.result as string ?? '')
+      reader.readAsText(file)
+    }
+  }
+
+  function removeFile() {
+    setCvFile(null)
+    setCvPdfBase64('')
+    setCvFileText('')
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErrMsg('')
-    if (!name.trim()) { setErrMsg('Udfyld venligst dit fulde navn.'); topRef.current?.scrollIntoView({ behavior: 'smooth' }); return }
+    if (!name.trim()) {
+      setErrMsg('Udfyld venligst dit fulde navn.')
+      topRef.current?.scrollIntoView({ behavior: 'smooth' })
+      return
+    }
 
     setStage('submitting')
     try {
+      const body: Record<string, string> = {
+        token,
+        name: name.trim(),
+        linkedin_url: linkedinUrl.trim(),
+        application_text: applicationText.trim(),
+      }
+
+      if (cvTab === 'upload' && cvFile) {
+        if (cvPdfBase64) body.cv_pdf_base64 = cvPdfBase64
+        else if (cvFileText) body.cv_text = cvFileText
+      } else if (cvTab === 'paste') {
+        body.cv_text = cvText.trim()
+      }
+
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, name: name.trim(), cv_text: cvText.trim() }),
+        body: JSON.stringify(body),
       })
       const d = await res.json()
-      if (!res.ok) { setErrMsg(d.error ?? 'Noget gik galt. Prøv igen.'); setStage('form'); return }
+      if (!res.ok) {
+        setErrMsg(d.error ?? 'Noget gik galt. Prøv igen.')
+        setStage('form')
+        return
+      }
       setStage('done')
     } catch {
       setErrMsg('Netværksfejl. Tjek din forbindelse og prøv igen.')
@@ -61,6 +129,23 @@ export default function ApplyPage() {
     background: 'var(--s1)', border: '1px solid var(--b1)',
     borderRadius: 16, overflow: 'hidden',
     boxShadow: '0 4px 32px rgba(26,25,22,.07)',
+  }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '10px 14px', borderRadius: 9,
+    border: '1px solid var(--b1)', background: 'var(--bg)',
+    fontSize: 14, color: 'var(--ink)', fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 300, outline: 'none', boxSizing: 'border-box',
+  }
+  const fieldLabel: React.CSSProperties = {
+    display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--m1)',
+    textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8,
+  }
+  const textareaStyle: React.CSSProperties = {
+    width: '100%', padding: '12px 14px', borderRadius: 9,
+    border: '1px solid var(--b1)', background: 'var(--bg)',
+    fontSize: 13, color: 'var(--ink)', fontFamily: "'DM Sans', sans-serif",
+    fontWeight: 300, outline: 'none', resize: 'vertical',
+    lineHeight: 1.6, boxSizing: 'border-box',
   }
 
   if (stage === 'loading') {
@@ -112,47 +197,120 @@ export default function ApplyPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
-        {/* Name */}
+      <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16, marginTop: 0 }}>
+
+        {/* — Personlige oplysninger — */}
         <div style={card}>
-          <div style={{ padding: '24px 32px' }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 500, color: 'var(--m1)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8 }}>
-              Dit fulde navn *
-            </label>
-            <input
-              type="text" value={name} onChange={e => setName(e.target.value)}
-              placeholder="Fornavn Efternavn" required
-              style={{
-                width: '100%', padding: '10px 14px', borderRadius: 9,
-                border: '1px solid var(--b1)', background: 'var(--bg)',
-                fontSize: 14, color: 'var(--ink)', fontFamily: "'DM Sans', sans-serif",
-                fontWeight: 300, outline: 'none', boxSizing: 'border-box',
-              }}
-            />
+          <div style={{ padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={fieldLabel}>Dit fulde navn *</label>
+              <input
+                type="text" value={name} onChange={e => setName(e.target.value)}
+                placeholder="Fornavn Efternavn" required
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>LinkedIn</label>
+              <input
+                type="text" value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)}
+                placeholder="https://linkedin.com/in/dit-navn"
+                style={inputStyle}
+              />
+            </div>
           </div>
         </div>
 
-        {/* CV / Background */}
+        {/* — CV — */}
         <div style={card}>
           <div style={{ padding: '24px 32px' }}>
             <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>
-              CV / Baggrund
+              CV
             </div>
             <div style={{ fontSize: 13, color: 'var(--m1)', fontWeight: 300, marginBottom: 16 }}>
-              Indsæt dit CV eller en kort beskrivelse af din baggrund.
+              Upload dit CV som PDF, eller indsæt teksten direkte.
+            </div>
+
+            {/* Tab toggle */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: 'var(--s2)', borderRadius: 9, padding: 3, width: 'fit-content', border: '1px solid var(--b1)' }}>
+              {(['upload', 'paste'] as CvTab[]).map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setCvTab(tab)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12,
+                    fontWeight: 500, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+                    transition: 'all .15s',
+                    background: cvTab === tab ? 'var(--s1)' : 'transparent',
+                    color: cvTab === tab ? 'var(--ink)' : 'var(--m2)',
+                    boxShadow: cvTab === tab ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                  }}
+                >
+                  {tab === 'upload' ? 'Upload fil' : 'Indsæt tekst'}
+                </button>
+              ))}
+            </div>
+
+            {cvTab === 'upload' && (
+              cvFile ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--s2)', borderRadius: 9, border: '1px solid var(--b1)' }}>
+                  <span style={{ fontSize: 20 }}>📄</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cvFile.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--m2)' }}>{(cvFile.size / 1024).toFixed(0)} KB</div>
+                  </div>
+                  <button
+                    type="button" onClick={removeFile}
+                    style={{ padding: '4px 10px', border: '1px solid var(--b1)', borderRadius: 6, background: 'transparent', fontSize: 12, color: 'var(--m1)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                  >
+                    Fjern
+                  </button>
+                </div>
+              ) : (
+                <label style={{ display: 'block', cursor: 'pointer' }}>
+                  <div style={{
+                    padding: '28px 16px', border: '1.5px dashed var(--b2)', borderRadius: 10,
+                    textAlign: 'center', background: 'var(--bg)',
+                  }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📎</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', marginBottom: 3 }}>Klik for at vælge fil</div>
+                    <div style={{ fontSize: 11, color: 'var(--m2)' }}>PDF eller TXT — maks. 4 MB</div>
+                  </div>
+                  <input type="file" accept=".pdf,.txt,.rtf" onChange={handleFileChange} style={{ display: 'none' }} />
+                </label>
+              )
+            )}
+
+            {cvTab === 'paste' && (
+              <textarea
+                value={cvText}
+                onChange={e => setCvText(e.target.value)}
+                placeholder="Indsæt dit CV, erfaring, uddannelse eller hvad du finder relevant…"
+                rows={10}
+                style={textareaStyle}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* — Ansøgning / Motivation — */}
+        <div style={card}>
+          <div style={{ padding: '24px 32px' }}>
+            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>
+              {info?.type === 'job' ? 'Ansøgning' : 'Motivation'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--m1)', fontWeight: 300, marginBottom: 16 }}>
+              {info?.type === 'job'
+                ? 'Fortæl os hvorfor du søger stillingen, og hvad du bringer med dig.'
+                : 'Fortæl os om dig selv og hvorfor du gerne vil med på dette team.'}
             </div>
             <textarea
-              value={cvText}
-              onChange={e => setCvText(e.target.value)}
-              placeholder="Indsæt dit CV, erfaring, uddannelse eller hvad du finder relevant…"
-              rows={12}
-              style={{
-                width: '100%', padding: '12px 14px', borderRadius: 9,
-                border: '1px solid var(--b1)', background: 'var(--bg)',
-                fontSize: 13, color: 'var(--ink)', fontFamily: "'DM Sans', sans-serif",
-                fontWeight: 300, outline: 'none', resize: 'vertical',
-                lineHeight: 1.6, boxSizing: 'border-box',
-              }}
+              value={applicationText}
+              onChange={e => setApplicationText(e.target.value)}
+              placeholder={info?.type === 'job' ? 'Dit motivationsbrev eller din ansøgning…' : 'Kort introduktion til dig selv…'}
+              rows={8}
+              style={textareaStyle}
             />
           </div>
         </div>
