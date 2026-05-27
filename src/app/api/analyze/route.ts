@@ -154,7 +154,7 @@ Returnér KUN valid JSON uden markdown:
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1600,
+          max_tokens: 1000,
           system: sys,
           messages: [{ role: 'user', content: userContent }],
         }),
