@@ -73,29 +73,38 @@ export async function POST(request: Request) {
             team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
           ].filter(Boolean).join('\n\n')
 
-          const resp = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: maxTokens,
-              temperature,
-              system,
-              messages: [{ role: 'user', content: userContent }],
-            }),
-          })
+          // Hard cutoff at 22s — leaves 4s buffer to write response before Netlify's 26s limit
+          const abortCtrl = new AbortController()
+          const timeoutId = setTimeout(() => abortCtrl.abort(), 22000)
 
-          if (resp.ok) {
-            const data = await resp.json()
-            const raw: string = data.content?.[0]?.text ?? ''
-            try { result = JSON.parse(raw) } catch {
-              const m = raw.match(/\{[\s\S]*\}/)
-              if (m) try { result = JSON.parse(m[0]) } catch { /* fall through */ }
+          try {
+            const resp = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.ANTHROPIC_API_KEY,
+                'anthropic-version': '2023-06-01',
+              },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: maxTokens,
+                temperature,
+                system,
+                messages: [{ role: 'user', content: userContent }],
+              }),
+              signal: abortCtrl.signal,
+            })
+
+            if (resp.ok) {
+              const data = await resp.json()
+              const raw: string = data.content?.[0]?.text ?? ''
+              try { result = JSON.parse(raw) } catch {
+                const m = raw.match(/\{[\s\S]*\}/)
+                if (m) try { result = JSON.parse(m[0]) } catch { /* fall through */ }
+              }
             }
+          } finally {
+            clearTimeout(timeoutId)
           }
         }
       } catch { /* fall through to mock */ }
