@@ -40,46 +40,66 @@ function mockResult(name: string) {
 export async function POST(request: Request) {
   const { content, name, team_context, leader_context, role_context } = await request.json()
 
-  if (process.env.ANTHROPIC_API_KEY) {
-    const { system, temperature, maxTokens } = buildAnalysisPrompt({
-      roleContext: role_context || undefined,
-      leaderContext: leader_context || undefined,
-      teamContext: team_context || undefined,
-    })
+  const encoder = new TextEncoder()
 
-    const userContent = [
-      `Kandidat: ${name}`,
-      content || '(ingen tekst)',
-      role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
-      leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
-      team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
-    ].filter(Boolean).join('\n\n')
+  // Return a streaming response so the 200 header is sent immediately.
+  // This prevents Netlify's gateway from issuing a 504 while Claude generates.
+  // The client's res.json() waits for the full body as normal — no frontend changes needed.
+  const stream = new ReadableStream({
+    async start(controller) {
+      let result
 
-    try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: maxTokens,
-          temperature,
-          system,
-          messages: [{ role: 'user', content: userContent }],
-        }),
-      })
-      if (resp.ok) {
-        const data = await resp.json()
-        const raw: string = data.content?.[0]?.text ?? ''
-        try { return Response.json(JSON.parse(raw)) } catch { /* fall through */ }
-        const m = raw.match(/\{[\s\S]*\}/)
-        if (m) return Response.json(JSON.parse(m[0]))
+      if (process.env.ANTHROPIC_API_KEY) {
+        const { system, temperature, maxTokens } = buildAnalysisPrompt({
+          roleContext: role_context || undefined,
+          leaderContext: leader_context || undefined,
+          teamContext: team_context || undefined,
+        })
+
+        const userContent = [
+          `Kandidat: ${name}`,
+          content || '(ingen tekst)',
+          role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
+          leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
+          team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
+        ].filter(Boolean).join('\n\n')
+
+        try {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: maxTokens,
+              temperature,
+              system,
+              messages: [{ role: 'user', content: userContent }],
+            }),
+          })
+
+          if (resp.ok) {
+            const data = await resp.json()
+            const raw: string = data.content?.[0]?.text ?? ''
+            try { result = JSON.parse(raw) } catch {
+              const m = raw.match(/\{[\s\S]*\}/)
+              if (m) try { result = JSON.parse(m[0]) } catch { /* fall through */ }
+            }
+          }
+        } catch { /* fall through to mock */ }
       }
-    } catch { /* fall through to mock */ }
-  }
 
-  return Response.json(mockResult(name ?? 'Kandidat'))
+      if (!result) result = mockResult(name ?? 'Kandidat')
+
+      controller.enqueue(encoder.encode(JSON.stringify(result)))
+      controller.close()
+    },
+  })
+
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/json' },
+  })
 }

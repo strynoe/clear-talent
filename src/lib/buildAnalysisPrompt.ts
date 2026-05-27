@@ -107,7 +107,7 @@ role_fit_score = match mod DENNE specifikke rolle. Referer til konkrete CV-fakta
   "mbti": "XXXX",
   "enneagram": "XXX",
   "typology_summary": "1-2 sætninger med signalsprog, fx 'CV-mønstre tyder på en ENTP 387-profil — ...'",
-  "detailed_explanation": "4-6 sætninger — minimum 2 CV-referencer — gennemgå MBTI-bogstaver og hvert tritype-ciffer i hverdagssprog",
+  "detailed_explanation": "6-8 sætninger — minimum 2 CV-referencer — gennemgå MBTI-bogstaver, kognitive funktioner og hvert tritype-ciffer i hverdagssprog",
   "typology_strengths": ["styrke med teori-reference og kobling til CV-fund", "...", "...", "..."],
   "typology_weaknesses": ["svaghed med teori-reference og CV-kobling", "...", "..."],
   "collab_strengths": ["konkret bidrag til team${ctx.teamContext ? ' — referer til navngivne kolleger' : ''}", "...", "..."],
@@ -120,6 +120,6 @@ role_fit_score = match mod DENNE specifikke rolle. Referer til konkrete CV-fakta
   return {
     system,
     temperature: 0.3,
-    maxTokens: 1200,
+    maxTokens: 2000,
   }
 }
