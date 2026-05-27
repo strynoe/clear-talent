@@ -15,6 +15,11 @@ export interface Typology {
   role_fit_score?: number
   role_fit_reasoning?: string
   leader_fit?: string
+  // Råmateriale indsendt af kandidat/medarbejder (via invite-link)
+  cv_text?: string
+  application_text?: string
+  linkedin_url?: string
+  cv_was_pdf?: boolean
 }
 
 export interface Candidate extends Typology {

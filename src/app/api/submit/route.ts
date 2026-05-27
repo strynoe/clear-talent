@@ -152,7 +152,8 @@ Returnér KUN valid JSON uden markdown:
   "collab_strengths": ["bidrag 1","...2","...3"],
   "collab_risks": ["udfordring 1 (specifik hvis team-kontekst)","...2"],
   "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","...2","...3"]
+  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","...2","...3"],
+  "cv_extracted": "HVIS du modtog et PDF-dokument: udtræk hele CV'ets tekst i ren læsbar form, struktureret med overskrifter (Uddannelse, Erfaring, Kompetencer osv.). Ellers udelad dette felt."
 }`
 
       // Build user message — supports PDF document block or plain text
@@ -184,7 +185,7 @@ Returnér KUN valid JSON uden markdown:
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
+            max_tokens: cv_pdf_base64 ? 1800 : 1000,
             system: sys,
             messages: [{ role: 'user', content: messageContent }],
           }),
@@ -207,6 +208,9 @@ Returnér KUN valid JSON uden markdown:
     const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
     const grad = GRADS[rnd(0, GRADS.length - 1)]
 
+    // Behold rå CV-tekst: hvis bruger indsatte tekst, brug det. Ellers (PDF) brug Claudes udtrukne tekst.
+    const cvTextToSave = cv_text?.trim() || (result as { cv_extracted?: string }).cv_extracted || ''
+
     const record = {
       name: name.trim(), score, grad, bars, verdict,
       headline: result.headline ?? '',
@@ -224,6 +228,11 @@ Returnér KUN valid JSON uden markdown:
       strengths: result.typology_strengths ?? [],
       risks: result.typology_weaknesses ?? [],
       interview_questions: result.interview_questions ?? [],
+      // Råmateriale fra ansøgningen
+      cv_text: cvTextToSave,
+      application_text: application_text?.trim() ?? '',
+      linkedin_url: linkedin_url?.trim() ?? '',
+      cv_was_pdf: !!cv_pdf_base64,
     }
 
     const table = invite.type === 'job' ? 'candidates' : 'employees'

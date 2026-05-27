@@ -98,6 +98,7 @@ export default function App() {
   // Modals
   const [modalJobOpen, setModalJobOpen] = useState(false)
   const [modalCandOpen, setModalCandOpen] = useState(false)
+  const [viewMaterialFor, setViewMaterialFor] = useState<Candidate | null>(null)
 
   // Job form
   const [jobTitle, setJobTitle] = useState('')
@@ -1025,6 +1026,63 @@ export default function App() {
             </div>
           </div>
           <div className="cp-col">
+            {/* Indsendt materiale — råmateriale fra ansøgningen */}
+            {(c.cv_text || c.application_text || c.linkedin_url || c.cv_was_pdf) && (
+              <div className="cp-section" style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div className="cp-section-title" style={{ marginBottom: 0 }}>Indsendt materiale</div>
+                  <button
+                    type="button"
+                    onClick={() => setViewMaterialFor(c)}
+                    style={{
+                      padding: '5px 11px', borderRadius: 7, border: '1px solid var(--b1)',
+                      background: 'var(--s2)', color: 'var(--m1)', fontSize: 11, fontWeight: 500,
+                      fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', transition: 'all .12s',
+                      letterSpacing: '.3px',
+                    }}
+                  >
+                    Vis fuldt indhold →
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {c.linkedin_url && (
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>LinkedIn</div>
+                      <a href={c.linkedin_url.startsWith('http') ? c.linkedin_url : `https://${c.linkedin_url}`} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 12, color: 'var(--a2)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                        {c.linkedin_url} ↗
+                      </a>
+                    </div>
+                  )}
+
+                  {c.application_text && (
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>Ansøgning</div>
+                      <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                        {c.application_text}
+                      </div>
+                    </div>
+                  )}
+
+                  {(c.cv_text || c.cv_was_pdf) && (
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        CV {c.cv_was_pdf && <span style={{ padding: '1px 6px', background: 'var(--s3)', borderRadius: 4, fontSize: 9, color: 'var(--m1)', letterSpacing: '.5px' }}>PDF</span>}
+                      </div>
+                      {c.cv_text ? (
+                        <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
+                          {c.cv_text}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: 'var(--m2)', fontStyle: 'italic' }}>CV indsendt som PDF og analyseret af AI</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="cp-section">
               <div className="cp-section-title">Samlet vurdering</div>
               <p className="cp-summary">{c.summary || 'Kandidaten er vurderet på baggrund af det tilgængelige materiale.'}</p>
@@ -1966,6 +2024,85 @@ export default function App() {
             <button className="modal-btn modal-btn-create" disabled={mcSubmitting} onClick={submitCandModal}>
               {mcSubmitting ? 'Analyserer...' : 'Analysér og tilføj →'}
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODAL: VIS INDSENDT MATERIALE ── */}
+      <div
+        className={`modal-backdrop${viewMaterialFor ? ' open' : ''}`}
+        onClick={e => { if (e.target === e.currentTarget) setViewMaterialFor(null) }}
+      >
+        <div className="modal" style={{ width: 640, maxWidth: '95vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
+          <div className="modal-header">
+            <div className="modal-title">Indsendt materiale{viewMaterialFor ? ` — ${viewMaterialFor.name}` : ''}</div>
+            <div className="modal-close" onClick={() => setViewMaterialFor(null)}>✕</div>
+          </div>
+          <div className="modal-body" style={{ overflowY: 'auto', flex: 1 }}>
+            {viewMaterialFor && (
+              <>
+                {viewMaterialFor.linkedin_url && (
+                  <div className="modal-field">
+                    <div className="modal-label">LinkedIn</div>
+                    <a
+                      href={viewMaterialFor.linkedin_url.startsWith('http') ? viewMaterialFor.linkedin_url : `https://${viewMaterialFor.linkedin_url}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 13, color: 'var(--a2)', textDecoration: 'none', wordBreak: 'break-all' }}
+                    >
+                      {viewMaterialFor.linkedin_url} ↗
+                    </a>
+                  </div>
+                )}
+
+                {viewMaterialFor.application_text && (
+                  <div className="modal-field">
+                    <div className="modal-label">Ansøgning / Motivation</div>
+                    <div style={{
+                      fontSize: 13, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300,
+                      whiteSpace: 'pre-wrap', background: 'var(--bg)', border: '1px solid var(--b1)',
+                      borderRadius: 8, padding: '12px 14px', maxHeight: 280, overflowY: 'auto',
+                    }}>
+                      {viewMaterialFor.application_text}
+                    </div>
+                  </div>
+                )}
+
+                {(viewMaterialFor.cv_text || viewMaterialFor.cv_was_pdf) && (
+                  <div className="modal-field">
+                    <div className="modal-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      CV
+                      {viewMaterialFor.cv_was_pdf && (
+                        <span style={{ padding: '2px 7px', background: 'var(--s3)', borderRadius: 4, fontSize: 9, color: 'var(--m1)', letterSpacing: '.5px', textTransform: 'uppercase' }}>
+                          {viewMaterialFor.cv_text ? 'Udtrukket fra PDF' : 'PDF'}
+                        </span>
+                      )}
+                    </div>
+                    {viewMaterialFor.cv_text ? (
+                      <div style={{
+                        fontSize: 13, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300,
+                        whiteSpace: 'pre-wrap', background: 'var(--bg)', border: '1px solid var(--b1)',
+                        borderRadius: 8, padding: '12px 14px', maxHeight: 360, overflowY: 'auto',
+                      }}>
+                        {viewMaterialFor.cv_text}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: 'var(--m2)', fontStyle: 'italic', padding: '10px 0' }}>
+                        CV blev indsendt som PDF og analyseret direkte af AI. Rå tekst er ikke gemt.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!viewMaterialFor.cv_text && !viewMaterialFor.application_text && !viewMaterialFor.linkedin_url && !viewMaterialFor.cv_was_pdf && (
+                  <div style={{ fontSize: 13, color: 'var(--m2)', fontStyle: 'italic', textAlign: 'center', padding: '30px 0' }}>
+                    Intet råmateriale gemt for denne profil.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button className="modal-btn modal-btn-ghost" onClick={() => setViewMaterialFor(null)}>Luk</button>
           </div>
         </div>
       </div>
