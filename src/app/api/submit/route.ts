@@ -3,6 +3,8 @@
 // Forlænget timeout — AI-analysen kan tage 20-30 sek
 export const maxDuration = 60
 
+import { buildAnalysisPrompt } from '@/lib/buildAnalysisPrompt'
+
 function sbHeaders() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
     ?? process.env.SUPABASE_ANON_KEY
@@ -30,12 +32,19 @@ function mockResult(name: string) {
     summary: `${name} fremstår som en kompetent profil baseret på det indsendte materiale.`,
     mbti: 'INFJ',
     enneagram: '459',
-    typology_summary: 'En INFJ 459 — en reflekteret og analytisk profil med fokus på dybde og mening.',
+    typology_summary: 'CV-mønstre tyder på en INFJ 459-profil — reflekteret og analytisk med fokus på dybde og mening.',
     detailed_explanation: 'En typologisk vurdering er ikke mulig uden AI. Dette er en placeholder med eksempelværdier.',
     typology_strengths: ['Refleksion', 'Engagement', 'Faglig dybde'],
     typology_weaknesses: ['Kan virke distanceret'],
     collab_strengths: ['Bidrager med dybde', 'Stærk indre kompas'],
     collab_risks: ['Kan trække sig under pres'],
+    bars: [
+      { l: 'Initiativ', v: rnd(40, 80) },
+      { l: 'Kommunikation', v: rnd(40, 80) },
+      { l: 'Analytisk tænkning', v: rnd(40, 80) },
+      { l: 'Empati', v: rnd(40, 80) },
+      { l: 'Struktur', v: rnd(40, 80) },
+    ],
     flags: [{ severity: 'ok' as const, text: 'Profil oprettet via invitationslink' }],
     interview_questions: [
       'Beskriv din stærkeste faglige kompetence med et konkret eksempel.',
@@ -44,13 +53,6 @@ function mockResult(name: string) {
     ],
   }
 }
-
-const ALL_METRICS = ['Initiativ','Kommunikation','Samarbejde','Struktur','Analytisk tænkning','Fremdrift','Empati','Tilpasningsevne','Beslutningsevne','Stresshåndtering']
-const GRADS = [
-  'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
-  'linear-gradient(135deg,#8a3a6a,#aa5a8a)', 'linear-gradient(135deg,#3a5a8a,#5a7aaa)',
-  'linear-gradient(135deg,#6a3a3a,#8a5a5a)', 'linear-gradient(135deg,#3a6a8a,#5a8aaa)',
-]
 
 export async function POST(request: Request) {
   try {
@@ -74,94 +76,71 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Invitationslinket er udløbet' }, { status: 410 })
     }
 
-    // AI analysis
     let result = mockResult(name.trim())
 
-    // Fetch team context (other members' MBTI for comparison)
+    // Fetch role context for job invites
+    let roleContext = ''
     let teamContext = ''
+
     try {
-      if (invite.type === 'team') {
+      if (invite.type === 'job') {
+        // Fetch job description and team members in parallel
+        const [jobRes, teamRes] = await Promise.all([
+          fetch(sbUrl(`jobs?id=eq.${invite.target_id}&select=title,description,hard_skills,success_criteria,experience_level,team_id`), { headers: sbHeaders() }),
+          // We'll fetch team members after we know team_id
+          Promise.resolve(null),
+        ])
+
+        const jobRows = await jobRes.json()
+        if (Array.isArray(jobRows) && jobRows[0]) {
+          const job = jobRows[0]
+          roleContext = [
+            job.title            && `Stilling: ${job.title}`,
+            job.experience_level && `Erfaringsniveau: ${job.experience_level}`,
+            job.description      && `Beskrivelse: ${job.description}`,
+            job.hard_skills      && `Hard skills: ${job.hard_skills}`,
+            job.success_criteria && `Succeskriterier: ${job.success_criteria}`,
+          ].filter(Boolean).join('\n')
+
+          if (job.team_id) {
+            const r = await fetch(sbUrl(`employees?team_id=eq.${job.team_id}&select=name,mbti,enneagram`), { headers: sbHeaders() })
+            const rows = await r.json()
+            if (Array.isArray(rows) && rows.length > 0) {
+              teamContext = rows
+                .filter((x: { mbti?: string }) => x.mbti)
+                .map((x: { name: string; mbti?: string; enneagram?: string }) =>
+                  `- ${x.name}: ${x.mbti}${x.enneagram ? ` ${x.enneagram}` : ''}`
+                ).join('\n')
+            }
+          }
+        }
+        void teamRes
+      } else if (invite.type === 'team') {
         const r = await fetch(sbUrl(`employees?team_id=eq.${invite.target_id}&select=name,mbti,enneagram`), { headers: sbHeaders() })
         const rows = await r.json()
         if (Array.isArray(rows) && rows.length > 0) {
-          teamContext = rows.filter((x: { mbti?: string }) => x.mbti).map((x: { name: string; mbti?: string; enneagram?: string }) => `- ${x.name}: ${x.mbti || '?'}${x.enneagram ? ` ${x.enneagram}` : ''}`).join('\n')
-        }
-      } else if (invite.type === 'job') {
-        const jobRes = await fetch(sbUrl(`jobs?id=eq.${invite.target_id}&select=team_id`), { headers: sbHeaders() })
-        const jobRows = await jobRes.json()
-        const teamId = Array.isArray(jobRows) && jobRows[0]?.team_id
-        if (teamId) {
-          const r = await fetch(sbUrl(`employees?team_id=eq.${teamId}&select=name,mbti,enneagram`), { headers: sbHeaders() })
-          const rows = await r.json()
-          if (Array.isArray(rows) && rows.length > 0) {
-            teamContext = rows.filter((x: { mbti?: string }) => x.mbti).map((x: { name: string; mbti?: string; enneagram?: string }) => `- ${x.name}: ${x.mbti || '?'}${x.enneagram ? ` ${x.enneagram}` : ''}`).join('\n')
-          }
+          teamContext = rows
+            .filter((x: { mbti?: string }) => x.mbti)
+            .map((x: { name: string; mbti?: string; enneagram?: string }) =>
+              `- ${x.name}: ${x.mbti}${x.enneagram ? ` ${x.enneagram}` : ''}`
+            ).join('\n')
         }
       }
-    } catch { /* ignore team context failure */ }
+    } catch { /* context fetch failure is non-fatal */ }
 
     if (process.env.ANTHROPIC_API_KEY) {
-      const sys = `Du er ekspert i MBTI (Myers-Briggs) og Enneagrammet med tritype-teori. Din opgave er at analysere en kandidat og udlede deres sandsynlige typekombination.
+      const { system, temperature, maxTokens } = buildAnalysisPrompt({
+        roleContext: roleContext || undefined,
+        teamContext: teamContext || undefined,
+        includeCvExtract: !!cv_pdf_base64,
+      })
 
-Du vil modtage én eller flere af følgende informationstyper:
-- Et PDF-dokument (CV/Resume) — læs det grundigt
-- Rå CV-tekst
-- LinkedIn URL (brug som kontekst for karrieremønster)
-- Ansøgning/motivationsbrev — er særlig værdifuldt for typologisk analyse
-
-━━━ TEORIGRUNDLAG ━━━━━━━━━━━━━━━━━━━━━━━━
-
-MBTI — 4 dichotomier giver 16 typer:
-- E/I: udadvendt vs. indadvendt (energikilde)
-- S/N: konkret sansende vs. mønster-intuitiv
-- T/F: logisk tænkende vs. værdi-følende
-- J/P: struktureret vs. fleksibel
-
-Hver type har 4 kognitive funktioner i prioriteret rækkefølge (dominant, auxiliary, tertiary, inferior).
-
-ENNEAGRAM TRITYPE:
-9 grundtyper fordelt i 3 centre:
-- HOVED: 5 (Iagttager), 6 (Loyalist), 7 (Entusiast) — kerne: ANGST
-- HJERTE: 2 (Hjælper), 3 (Præsterer), 4 (Individualist) — kerne: SKAM
-- KROP: 8 (Udfordrer), 9 (Fredsmægler), 1 (Perfektionist) — kerne: VREDE
-
-TRITYPE = én type fra hvert center, i orden af dominans (3 cifre, fx 387, 549, 729).
-
-━━━ FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Kombinationen skrives ALTID som "MBTI Tritype", fx "ENTP 387" eller "INFJ 549".
-
-Læseren har INGEN forhåndskendskab — forklar alt i hverdagssprog men reference TILBAGE til teorien gennemgående.
-
-Hvis team_context er angivet, vurdér konkret hvordan kandidatens MBTI + Tritype vil interagere med de navngivne teammedlemmer.
-
-━━━ OUTPUT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Returnér KUN valid JSON uden markdown:
-{
-  "headline": "kort baggrund max 55 tegn",
-  "score": tal 30-97,
-  "personal_bio": "2-3 sætninger om personen som menneske",
-  "summary": "3-4 sætninger samlet professionel vurdering",
-  "mbti": "fire bogstaver fx ENTP",
-  "enneagram": "tritype som 3 cifre fx 387",
-  "typology_summary": "1-2 sætninger med kombinationen tydeligt nævnt (fx 'En ENTP 387 — ...') i klart sprog",
-  "detailed_explanation": "6-10 sætninger der gennemgår MBTI-bogstaverne, kognitive funktioner, hver af de 3 tritype-cifre og hvordan kombinationen kommer til udtryk. Reference TILBAGE til teorien hele tiden.",
-  "typology_strengths": ["styrke 1 (med teori-reference)","...2","...3","...4"],
-  "typology_weaknesses": ["svaghed 1 (med teori-reference)","...2","...3"],
-  "collab_strengths": ["bidrag 1","...2","...3"],
-  "collab_risks": ["udfordring 1 (specifik hvis team-kontekst)","...2"],
-  "flags": [{"severity":"red|warn|ok","text":"observation"}],
-  "interview_questions": ["spørgsmål 1 (designet til at teste typologi-hypotesen)","...2","...3"],
-  "cv_extracted": "HVIS du modtog et PDF-dokument: udtræk hele CV'ets tekst i ren læsbar form, struktureret med overskrifter (Uddannelse, Erfaring, Kompetencer osv.). Ellers udelad dette felt."
-}`
-
-      // Build user message — supports PDF document block or plain text
-      const textParts: string[] = [`Kandidat/medarbejder: ${name.trim()}`]
-      if (linkedin_url?.trim()) textParts.push(`LinkedIn: ${linkedin_url.trim()}`)
-      if (cv_text?.trim()) textParts.push(`CV/Baggrund:\n${cv_text.trim()}`)
-      if (application_text?.trim()) textParts.push(`Ansøgning/motivation:\n${application_text.trim()}`)
-      if (teamContext) textParts.push(`EKSISTERENDE TEAMMEDLEMMER:\n${teamContext}`)
+      const textParts: string[] = [`Kandidat: ${name.trim()}`]
+      if (linkedin_url?.trim())      textParts.push(`LinkedIn: ${linkedin_url.trim()}`)
+      if (cv_text?.trim())           textParts.push(`CV/Baggrund:\n${cv_text.trim()}`)
+      if (application_text?.trim())  textParts.push(`Ansøgning/motivation:\n${application_text.trim()}`)
+      if (teamContext)               textParts.push(`EKSISTERENDE TEAMMEDLEMMER:\n${teamContext}`)
+      if (roleContext)               textParts.push(`ROLLE-KONTEKST:\n${roleContext}`)
       const textContent = textParts.join('\n\n')
 
       type ContentBlock =
@@ -185,8 +164,9 @@ Returnér KUN valid JSON uden markdown:
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: cv_pdf_base64 ? 1800 : 1000,
-            system: sys,
+            max_tokens: cv_pdf_base64 ? 2500 : maxTokens,
+            temperature,
+            system,
             messages: [{ role: 'user', content: messageContent }],
           }),
         })
@@ -204,39 +184,48 @@ Returnér KUN valid JSON uden markdown:
     // Build record
     const score = typeof result.score === 'number' ? result.score : 65
     const verdict = score >= 80 ? 'Anbefalet' : score >= 60 ? 'Forsigtighed' : 'Frarådet'
-    const shuffle = <T,>(a: T[]) => [...a].sort(() => Math.random() - .5)
-    const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
+
+    // Use AI-generated bars if available, otherwise fall back to mock bars
+    const aiBars = Array.isArray((result as { bars?: unknown }).bars)
+      ? (result as { bars: { l: string; v: number }[] }).bars.slice(0, 5)
+      : result.bars ?? []
+
+    const GRADS = [
+      'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
+      'linear-gradient(135deg,#8a3a6a,#aa5a8a)', 'linear-gradient(135deg,#3a5a8a,#5a7aaa)',
+      'linear-gradient(135deg,#6a3a3a,#8a5a5a)', 'linear-gradient(135deg,#3a6a8a,#5a8aaa)',
+    ]
     const grad = GRADS[rnd(0, GRADS.length - 1)]
 
-    // Behold rå CV-tekst: hvis bruger indsatte tekst, brug det. Ellers (PDF) brug Claudes udtrukne tekst.
     const cvTextToSave = cv_text?.trim() || (result as { cv_extracted?: string }).cv_extracted || ''
 
     const record = {
-      name: name.trim(), score, grad, bars, verdict,
-      headline: result.headline ?? '',
-      summary: result.summary ?? '',
-      personal_bio: result.personal_bio ?? '',
-      mbti: result.mbti ?? '',
-      enneagram: result.enneagram ?? '',
-      typology_summary: result.typology_summary ?? '',
-      detailed_explanation: result.detailed_explanation ?? '',
-      typology_strengths: result.typology_strengths ?? [],
-      typology_weaknesses: result.typology_weaknesses ?? [],
-      collab_strengths: result.collab_strengths ?? [],
-      collab_risks: result.collab_risks ?? [],
-      flags: result.flags ?? [],
-      strengths: result.typology_strengths ?? [],
-      risks: result.typology_weaknesses ?? [],
-      interview_questions: result.interview_questions ?? [],
-      // Råmateriale fra ansøgningen
-      cv_text: cvTextToSave,
-      application_text: application_text?.trim() ?? '',
-      linkedin_url: linkedin_url?.trim() ?? '',
-      cv_was_pdf: !!cv_pdf_base64,
+      name: name.trim(), score, grad, bars: aiBars, verdict,
+      headline:              result.headline ?? '',
+      summary:               result.summary ?? '',
+      personal_bio:          result.personal_bio ?? '',
+      mbti:                  result.mbti ?? '',
+      enneagram:             result.enneagram ?? '',
+      typology_summary:      result.typology_summary ?? '',
+      detailed_explanation:  result.detailed_explanation ?? '',
+      typology_strengths:    result.typology_strengths ?? [],
+      typology_weaknesses:   result.typology_weaknesses ?? [],
+      collab_strengths:      result.collab_strengths ?? [],
+      collab_risks:          result.collab_risks ?? [],
+      flags:                 result.flags ?? [],
+      strengths:             result.typology_strengths ?? [],
+      risks:                 result.typology_weaknesses ?? [],
+      interview_questions:   result.interview_questions ?? [],
+      role_fit_score:        (result as { role_fit_score?: number }).role_fit_score ?? null,
+      role_fit_reasoning:    (result as { role_fit_reasoning?: string }).role_fit_reasoning ?? '',
+      cv_text:               cvTextToSave,
+      application_text:      application_text?.trim() ?? '',
+      linkedin_url:          linkedin_url?.trim() ?? '',
+      cv_was_pdf:            !!cv_pdf_base64,
     }
 
     const table = invite.type === 'job' ? 'candidates' : 'employees'
-    const fk = invite.type === 'job' ? 'job_id' : 'team_id'
+    const fk    = invite.type === 'job' ? 'job_id'    : 'team_id'
     const insRes = await fetch(sbUrl(table), {
       method: 'POST',
       headers: { ...sbHeaders(), 'Prefer': 'return=minimal' },
