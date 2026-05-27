@@ -1,7 +1,7 @@
+import { buildAnalysisPrompt } from '@/lib/buildAnalysisPrompt'
+
 // Forlænget timeout — AI-analysen kan tage 20-30 sek
 export const maxDuration = 60
-
-import { buildAnalysisPrompt } from '@/lib/buildAnalysisPrompt'
 
 function rnd(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min
