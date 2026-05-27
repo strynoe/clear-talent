@@ -343,7 +343,12 @@ export default function App() {
     return parts.join('\n')
   }
 
-  async function analyzeAndAddToJob(content: string, name: string, jobId: number) {
+  async function analyzeAndAddToJob(
+    content: string,
+    name: string,
+    jobId: number,
+    material?: { cv_text?: string; application_text?: string; linkedin_url?: string; cv_was_pdf?: boolean },
+  ) {
     const tempId = -(Date.now() + Math.random())
     const grad = GRADS[analysisCount.current++ % GRADS.length]
     setJobs(prev => prev.map(j => j.id !== jobId ? j : {
@@ -379,6 +384,11 @@ export default function App() {
         interview_questions: res.interview_questions ?? [],
         strengths: res.typology_strengths ?? res.strengths ?? [],
         risks: res.typology_weaknesses ?? res.risks ?? [],
+        // Råmateriale (CV, ansøgning, LinkedIn)
+        cv_text: material?.cv_text ?? '',
+        application_text: material?.application_text ?? '',
+        linkedin_url: material?.linkedin_url ?? '',
+        cv_was_pdf: material?.cv_was_pdf ?? false,
       }).select().single()
 
       if (dbErr) {
@@ -641,16 +651,28 @@ export default function App() {
     if (empAsLeader && !empLeadershipStyle) { alert('Vælg en lederstil.'); return }
     setEmpSubmitting(true)
     let content = '', name = empName.trim() || (empAsLeader ? 'Leder' : 'Medarbejder')
+    const cvWasPdf = empFile?.type === 'application/pdf'
     if (empFile) {
       uploadToSupabase(empFile, name)
       try { content = await readFileText(empFile) } catch { content = '' }
     } else if (empText) { content = empText
     } else if (empLinkedin) { content = 'LinkedIn: ' + empLinkedin; if (!empName.trim()) name = nameFromUrl(empLinkedin) }
     setModalEmpOpen(false); setEmpSubmitting(false)
-    await analyzeAndAddToTeam(content, name, currentTeamId!, empAsLeader, empLeadershipStyle)
+    await analyzeAndAddToTeam(content, name, currentTeamId!, empAsLeader, empLeadershipStyle, {
+      cv_text: cvWasPdf ? '' : (empText || content || ''),
+      linkedin_url: empLinkedin.trim(),
+      cv_was_pdf: cvWasPdf,
+    })
   }
 
-  async function analyzeAndAddToTeam(content: string, name: string, teamId: number, asLeader = false, leadershipStyle = '') {
+  async function analyzeAndAddToTeam(
+    content: string,
+    name: string,
+    teamId: number,
+    asLeader = false,
+    leadershipStyle = '',
+    material?: { cv_text?: string; application_text?: string; linkedin_url?: string; cv_was_pdf?: boolean },
+  ) {
     const tempId = -(Date.now() + Math.random())
     const grad = GRADS[analysisCount.current++ % GRADS.length]
     setTeams(prev => prev.map(t => t.id !== teamId ? t : {
@@ -683,6 +705,11 @@ export default function App() {
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
         strengths: res.typology_strengths ?? res.strengths ?? [],
         risks: res.typology_weaknesses ?? res.risks ?? [],
+        // Råmateriale (CV, ansøgning, LinkedIn)
+        cv_text: material?.cv_text ?? '',
+        application_text: material?.application_text ?? '',
+        linkedin_url: material?.linkedin_url ?? '',
+        cv_was_pdf: material?.cv_was_pdf ?? false,
       }).select().single()
       if (dbErr) {
         console.error('[analyzeAndAddToTeam] DB FEJL:', dbErr.message, dbErr.code, dbErr.details, dbErr.hint)
@@ -729,6 +756,7 @@ export default function App() {
     if (!mcText && !mcFile && !mcLinkedin) { alert('Tilføj et CV, tekst eller LinkedIn URL.'); return }
     setMcSubmitting(true)
     let content = '', candidateName = mcName.trim() || 'Kandidat'
+    const cvWasPdf = mcFile?.type === 'application/pdf'
     if (mcFile) {
       uploadToSupabase(mcFile, candidateName, currentJobId)
       try { content = await readFileText(mcFile) } catch { content = '' }
@@ -740,7 +768,12 @@ export default function App() {
     }
     setModalCandOpen(false)
     setMcSubmitting(false)
-    await analyzeAndAddToJob(content, candidateName, currentJobId!)
+    await analyzeAndAddToJob(content, candidateName, currentJobId!, {
+      // For PDF har vi ingen ren tekst — gem den læste tekst hvis brugbar, ellers tom
+      cv_text: cvWasPdf ? '' : (mcText || content || ''),
+      linkedin_url: mcLinkedin.trim(),
+      cv_was_pdf: cvWasPdf,
+    })
   }
 
   // ── CV page queue ──
