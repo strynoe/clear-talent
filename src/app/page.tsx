@@ -286,7 +286,7 @@ export default function App() {
       .catch(console.error)
   }
 
-  // ── AI analyze ──
+  // ── AI analyze (streaming) ──
   async function callAnalyze(content: string, name: string, ctx: { team_context?: string; role_context?: string; leader_context?: string } = {}) {
     const res = await fetch('/api/analyze', {
       method: 'POST',
@@ -294,7 +294,28 @@ export default function App() {
       body: JSON.stringify({ content, name, ...ctx }),
     })
     if (!res.ok) throw new Error('Analyse fejlede')
-    const data = await res.json()
+    if (!res.body) throw new Error('Tomt svar fra analyse')
+
+    // Read streaming response — text deltas from Claude arrive chunk by chunk
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      text += decoder.decode(value, { stream: true })
+    }
+    text += decoder.decode()
+
+    // Try to parse the accumulated text as JSON, with fallback for extra content
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error('Kunne ikke parse svar fra analyse')
+      data = JSON.parse(match[0])
+    }
     console.log('[callAnalyze]', name, 'returned:', data)
     return data
   }

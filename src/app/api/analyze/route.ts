@@ -1,6 +1,6 @@
 import { buildAnalysisPrompt } from '@/lib/buildAnalysisPrompt'
 
-// Forlænget timeout — AI-analysen kan tage 20-30 sek
+// Streaming function — Netlify allows longer execution when data flows continuously
 export const maxDuration = 60
 
 function rnd(min: number, max: number) {
@@ -15,12 +15,12 @@ function mockResult(name: string) {
     summary: `${name} fremstår som en kompetent kandidat med relevant erfaring.`,
     mbti: 'ENTP',
     enneagram: '387',
-    typology_summary: 'CV-mønstre tyder på en ENTP 387-profil — energisk og idédrevet med en naturlig præstationsorientering.',
+    typology_summary: 'CV-mønstre tyder på en ENTP 387-profil — energisk og idédrevet.',
     detailed_explanation: 'Dette er en placeholder — AI-analyse kræver ANTHROPIC_API_KEY.',
-    typology_strengths: ['Idégenerering og innovation', 'Præstationsdrevet (tritype 3)', 'Naturlig ledelsesinstinkt (tritype 8)', 'Entusiasme der trækker andre med (tritype 7)'],
-    typology_weaknesses: ['Kan starte mange projekter og afslutte få', 'Risiko for at performe rolle frem for at være autentisk'],
-    collab_strengths: ['Bringer nye perspektiver', 'Tør tage svære samtaler', 'Høj energi i fastlåste situationer'],
-    collab_risks: ['Kan komme i konflikt med meget strukturerede profiler', 'Kan opfattes som dominerende'],
+    typology_strengths: ['Idégenerering', 'Præstationsdrevet', 'Beslutsomhed', 'Entusiasme'],
+    typology_weaknesses: ['Kan starte mange projekter og afslutte få'],
+    collab_strengths: ['Bringer nye perspektiver', 'Tør tage svære samtaler'],
+    collab_risks: ['Kan komme i konflikt med meget strukturerede profiler'],
     bars: [
       { l: 'Initiativ', v: rnd(50, 90) },
       { l: 'Kommunikation', v: rnd(50, 90) },
@@ -28,11 +28,11 @@ function mockResult(name: string) {
       { l: 'Fremdrift', v: rnd(50, 90) },
       { l: 'Tilpasningsevne', v: rnd(50, 90) },
     ],
-    flags: [{ severity: 'ok', text: 'Profilanalyse gennemført på CV' }],
+    flags: [{ severity: 'ok', text: 'Profilanalyse gennemført' }],
     interview_questions: [
-      'Beskriv et projekt du startede med høj energi — hvordan endte det?',
-      'Hvornår sidst pressede du dig selv eller andre over en grænse for at nå et mål?',
-      'Hvad motiverer dig mere end noget andet i dit arbejdsliv?',
+      'Beskriv et projekt du startede med høj energi.',
+      'Hvornår pressede du dig selv mest?',
+      'Hvad motiverer dig mest?',
     ],
   }
 }
@@ -42,84 +42,96 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder()
 
-  // Streaming response with keepalive whitespace — ensures bytes flow during the
-  // long Anthropic call so Netlify's gateway treats this as a streaming function
-  // and doesn't trigger a 504. JSON.parse ignores leading whitespace, so the
-  // client's res.json() works unchanged.
+  // True streaming: forward Anthropic text deltas to client as they arrive.
+  // Continuous data flow allows the function to run beyond the default timeout.
   const stream = new ReadableStream({
     async start(controller) {
-      // Initial whitespace byte to commit to streaming mode immediately
-      controller.enqueue(encoder.encode(' '))
-
-      const keepalive = setInterval(() => {
-        try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
-      }, 5000)
-
-      let result
-
       try {
-        if (process.env.ANTHROPIC_API_KEY) {
-          const { system, temperature, maxTokens } = buildAnalysisPrompt({
-            roleContext: role_context || undefined,
-            leaderContext: leader_context || undefined,
-            teamContext: team_context || undefined,
-          })
+        if (!process.env.ANTHROPIC_API_KEY) {
+          controller.enqueue(encoder.encode(JSON.stringify(mockResult(name ?? 'Kandidat'))))
+          controller.close()
+          return
+        }
 
-          const userContent = [
-            `Kandidat: ${name}`,
-            content || '(ingen tekst)',
-            role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
-            leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
-            team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
-          ].filter(Boolean).join('\n\n')
+        const { system, temperature, maxTokens } = buildAnalysisPrompt({
+          roleContext: role_context || undefined,
+          leaderContext: leader_context || undefined,
+          teamContext: team_context || undefined,
+        })
 
-          // Hard cutoff at 22s — leaves 4s buffer to write response before Netlify's 26s limit
-          const abortCtrl = new AbortController()
-          const timeoutId = setTimeout(() => abortCtrl.abort(), 22000)
+        const userContent = [
+          `Kandidat: ${name}`,
+          content || '(ingen tekst)',
+          role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
+          leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
+          team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
+        ].filter(Boolean).join('\n\n')
 
-          try {
-            const resp = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY,
-                'anthropic-version': '2023-06-01',
-              },
-              body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: maxTokens,
-                temperature,
-                system,
-                messages: [{ role: 'user', content: userContent }],
-              }),
-              signal: abortCtrl.signal,
-            })
+        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: maxTokens,
+            temperature,
+            system,
+            messages: [{ role: 'user', content: userContent }],
+            stream: true,
+          }),
+        })
 
-            if (resp.ok) {
-              const data = await resp.json()
-              const raw: string = data.content?.[0]?.text ?? ''
-              try { result = JSON.parse(raw) } catch {
-                const m = raw.match(/\{[\s\S]*\}/)
-                if (m) try { result = JSON.parse(m[0]) } catch { /* fall through */ }
+        if (!resp.ok || !resp.body) {
+          controller.enqueue(encoder.encode(JSON.stringify(mockResult(name ?? 'Kandidat'))))
+          controller.close()
+          return
+        }
+
+        // Parse Anthropic's SSE stream and forward text deltas as plain text
+        const reader = resp.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const payload = line.slice(6).trim()
+            if (!payload || payload === '[DONE]') continue
+            try {
+              const event = JSON.parse(payload)
+              if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                const text: string = event.delta.text ?? ''
+                if (text) controller.enqueue(encoder.encode(text))
               }
-            }
-          } finally {
-            clearTimeout(timeoutId)
+            } catch { /* skip malformed lines */ }
           }
         }
-      } catch { /* fall through to mock */ }
 
-      if (!result) result = mockResult(name ?? 'Kandidat')
-
-      clearInterval(keepalive)
-      controller.enqueue(encoder.encode(JSON.stringify(result)))
-      controller.close()
+        controller.close()
+      } catch (err) {
+        // On any unexpected error, send mock so client always gets valid JSON
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(mockResult(name ?? 'Kandidat'))))
+        } catch { /* stream may already be closed */ }
+        controller.close()
+        console.error('[analyze stream error]', err)
+      }
     },
   })
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Accel-Buffering': 'no',
     },

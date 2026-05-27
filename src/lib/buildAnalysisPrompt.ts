@@ -120,6 +120,6 @@ role_fit_score = match mod DENNE specifikke rolle. Referer til konkrete CV-fakta
   return {
     system,
     temperature: 0.3,
-    maxTokens: 1500,
+    maxTokens: 2000,
   }
 }
