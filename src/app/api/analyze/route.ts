@@ -42,29 +42,37 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder()
 
-  // Return a streaming response so the 200 header is sent immediately.
-  // This prevents Netlify's gateway from issuing a 504 while Claude generates.
-  // The client's res.json() waits for the full body as normal — no frontend changes needed.
+  // Streaming response with keepalive whitespace — ensures bytes flow during the
+  // long Anthropic call so Netlify's gateway treats this as a streaming function
+  // and doesn't trigger a 504. JSON.parse ignores leading whitespace, so the
+  // client's res.json() works unchanged.
   const stream = new ReadableStream({
     async start(controller) {
+      // Initial whitespace byte to commit to streaming mode immediately
+      controller.enqueue(encoder.encode(' '))
+
+      const keepalive = setInterval(() => {
+        try { controller.enqueue(encoder.encode(' ')) } catch { /* stream closed */ }
+      }, 5000)
+
       let result
 
-      if (process.env.ANTHROPIC_API_KEY) {
-        const { system, temperature, maxTokens } = buildAnalysisPrompt({
-          roleContext: role_context || undefined,
-          leaderContext: leader_context || undefined,
-          teamContext: team_context || undefined,
-        })
+      try {
+        if (process.env.ANTHROPIC_API_KEY) {
+          const { system, temperature, maxTokens } = buildAnalysisPrompt({
+            roleContext: role_context || undefined,
+            leaderContext: leader_context || undefined,
+            teamContext: team_context || undefined,
+          })
 
-        const userContent = [
-          `Kandidat: ${name}`,
-          content || '(ingen tekst)',
-          role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
-          leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
-          team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
-        ].filter(Boolean).join('\n\n')
+          const userContent = [
+            `Kandidat: ${name}`,
+            content || '(ingen tekst)',
+            role_context    ? `\n\n━━━ ROLLE-KONTEKST ━━━\n${role_context}` : '',
+            leader_context  ? `\n\n━━━ LEDER-KONTEKST ━━━\n${leader_context}` : '',
+            team_context    ? `\n\n━━━ EKSISTERENDE TEAMMEDLEMMER ━━━\n${team_context}` : '',
+          ].filter(Boolean).join('\n\n')
 
-        try {
           const resp = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -89,17 +97,22 @@ export async function POST(request: Request) {
               if (m) try { result = JSON.parse(m[0]) } catch { /* fall through */ }
             }
           }
-        } catch { /* fall through to mock */ }
-      }
+        }
+      } catch { /* fall through to mock */ }
 
       if (!result) result = mockResult(name ?? 'Kandidat')
 
+      clearInterval(keepalive)
       controller.enqueue(encoder.encode(JSON.stringify(result)))
       controller.close()
     },
   })
 
   return new Response(stream, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+    },
   })
 }
