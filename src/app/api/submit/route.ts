@@ -164,7 +164,7 @@ export async function POST(request: Request) {
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: cv_pdf_base64 ? 2000 : maxTokens,
+            max_tokens: cv_pdf_base64 ? 1600 : maxTokens,
             temperature,
             system,
             messages: [{ role: 'user', content: messageContent }],
