@@ -1,11 +1,31 @@
 // Delte typer på tværs af hele applikationen
 
 export interface Bar { l: string; v: number }
-export interface Flag { severity: 'red' | 'warn' | 'ok'; text: string }
+
+export interface Flag {
+  severity: 'red' | 'warn' | 'ok'
+  text: string
+  action?: string
+}
+
+export interface InterviewQuestion {
+  question: string
+  probes: string
+}
+
+export interface BehaviorBars {
+  'Analytisk tænkning': number
+  'Beslutningsevne': number
+  'Struktur': number
+  'Initiativ': number
+  'Samarbejde': number
+  'Tilpasningsevne': number
+}
 
 export interface Typology {
   mbti: string
   enneagram: string
+  // Backward compat fields (still stored in DB, may be empty for new records)
   typology_summary: string
   detailed_explanation: string
   typology_strengths: string[]
@@ -33,10 +53,23 @@ export interface Candidate extends Typology {
   summary: string
   personal_bio: string
   flags: Flag[]
-  interview_questions: string[]
+  interview_questions: Array<InterviewQuestion | string>
   strengths: string[]
   risks: string[]
   jobId: number
+  // Nye felter (DEL 3) — kræver DB-migration for persistens
+  confidence?: 'lav' | 'middel' | 'høj'
+  confidence_reason?: string
+  overall_score?: number
+  overall_reason?: string
+  bottom_line?: string
+  role_needs?: string[]
+  candidate_brings?: string[]
+  role_fit_summary?: string
+  team_contributions?: string[]
+  team_risks?: string[]
+  personality_plain?: string
+  behavior_bars?: BehaviorBars
   _loading?: boolean
   _error?: string
 }
@@ -66,12 +99,25 @@ export interface Employee extends Typology {
   summary: string
   personal_bio: string
   flags: Flag[]
-  interview_questions: string[]
+  interview_questions: Array<InterviewQuestion | string>
   strengths: string[]
   risks: string[]
   teamId: number
   role: 'member' | 'leader'
   leadership_style: string
+  // Nye felter (DEL 3) — kræver DB-migration for persistens
+  confidence?: 'lav' | 'middel' | 'høj'
+  confidence_reason?: string
+  overall_score?: number
+  overall_reason?: string
+  bottom_line?: string
+  role_needs?: string[]
+  candidate_brings?: string[]
+  role_fit_summary?: string
+  team_contributions?: string[]
+  team_risks?: string[]
+  personality_plain?: string
+  behavior_bars?: BehaviorBars
   _loading?: boolean
   _error?: string
 }

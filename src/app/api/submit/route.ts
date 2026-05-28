@@ -24,33 +24,34 @@ function rnd(min: number, max: number) {
 }
 
 function mockResult(name: string) {
-  const score = rnd(50, 88)
+  const overall = rnd(50, 88)
   return {
     headline: 'Solid profil med relevant baggrund',
-    score,
-    personal_bio: `${name} er en person med en tydelig retning og engagement i sit arbejdsliv.`,
-    summary: `${name} fremstår som en kompetent profil baseret på det indsendte materiale.`,
-    mbti: 'INFJ',
-    enneagram: '459',
-    typology_summary: 'CV-mønstre tyder på en INFJ 459-profil — reflekteret og analytisk med fokus på dybde og mening.',
-    detailed_explanation: 'En typologisk vurdering er ikke mulig uden AI. Dette er en placeholder med eksempelværdier.',
-    typology_strengths: ['Refleksion', 'Engagement', 'Faglig dybde'],
-    typology_weaknesses: ['Kan virke distanceret'],
-    collab_strengths: ['Bidrager med dybde', 'Stærk indre kompas'],
-    collab_risks: ['Kan trække sig under pres'],
-    bars: [
-      { l: 'Initiativ', v: rnd(40, 80) },
-      { l: 'Kommunikation', v: rnd(40, 80) },
-      { l: 'Analytisk tænkning', v: rnd(40, 80) },
-      { l: 'Empati', v: rnd(40, 80) },
-      { l: 'Struktur', v: rnd(40, 80) },
-    ],
-    flags: [{ severity: 'ok' as const, text: 'Profil oprettet via invitationslink' }],
+    type: 'INFJ 459',
+    confidence: 'lav' as const,
+    confidence_reason: 'Mock-data — AI-analyse kræver ANTHROPIC_API_KEY.',
+    overall_score: overall,
+    overall_reason: 'Mock-score uden reel vurdering.',
+    bottom_line: `${name} fremstår som en kompetent profil baseret på det indsendte materiale. Dette er mock-data.`,
+    role_fit_score: rnd(45, 85),
+    role_needs: ['Relevant erfaring', 'Faglige kompetencer'],
+    candidate_brings: ['ikke dokumenteret i CV', 'ikke dokumenteret i CV'],
+    role_fit_summary: 'Mock rolle-fit — AI-analyse kræver ANTHROPIC_API_KEY.',
+    flags: [{ severity: 'ok' as const, text: 'Profil oprettet via invitationslink (mock)', action: 'Ingen handling nødvendig' }],
     interview_questions: [
-      'Beskriv din stærkeste faglige kompetence med et konkret eksempel.',
-      'Hvad motiverer dig mest i dit arbejde?',
-      'Fortæl om en situation, hvor du navigerede en vanskelig beslutning.',
+      { question: 'Beskriv din stærkeste faglige kompetence med et konkret eksempel.', probes: 'Mock-spørgsmål' },
     ],
+    team_contributions: ['Bidrager med dybde', 'Stærk indre kompas'],
+    team_risks: ['Kan trække sig under pres'],
+    personality_plain: 'CV-mønstre tyder på en INFJ 459-profil — reflekteret og analytisk med fokus på dybde og mening. Dette er mock-data.',
+    behavior_bars: {
+      'Analytisk tænkning': rnd(50, 85),
+      'Beslutningsevne': rnd(40, 75),
+      'Struktur': rnd(55, 85),
+      'Initiativ': rnd(40, 75),
+      'Samarbejde': rnd(55, 85),
+      'Tilpasningsevne': rnd(40, 75),
+    },
   }
 }
 
@@ -181,14 +182,24 @@ export async function POST(request: Request) {
       } catch { /* use mock */ }
     }
 
-    // Build record
-    const score = typeof result.score === 'number' ? result.score : 65
+    // Ny schema-mapping
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resultAny = result as any
+    const typeStr: string = resultAny.type ?? ''
+    const typeParts = typeStr.trim().split(/\s+/)
+    const mbti: string = typeParts[0] ?? resultAny.mbti ?? ''
+    const enneagram: string = (typeParts.slice(1).join(' ') || resultAny.enneagram) ?? ''
+
+    const score: number = resultAny.overall_score ?? resultAny.score ?? 65
     const verdict = score >= 80 ? 'Anbefalet' : score >= 60 ? 'Forsigtighed' : 'Frarådet'
 
-    // Use AI-generated bars if available, otherwise fall back to mock bars
-    const aiBars = Array.isArray((result as { bars?: unknown }).bars)
-      ? (result as { bars: { l: string; v: number }[] }).bars.slice(0, 5)
-      : result.bars ?? []
+    // behavior_bars (object) → bars (array)
+    const bbRaw: Record<string, number> | undefined = resultAny.behavior_bars
+    const aiBars: { l: string; v: number }[] = bbRaw && typeof bbRaw === 'object'
+      ? Object.entries(bbRaw).map(([l, v]) => ({ l, v: v as number }))
+      : Array.isArray(resultAny.bars)
+        ? (resultAny.bars as { l: string; v: number }[]).slice(0, 5)
+        : []
 
     const GRADS = [
       'linear-gradient(135deg,#3a8a5a,#5aaa7a)', 'linear-gradient(135deg,#5a3a8a,#8a5aaa)',
@@ -197,27 +208,28 @@ export async function POST(request: Request) {
     ]
     const grad = GRADS[rnd(0, GRADS.length - 1)]
 
-    const cvTextToSave = cv_text?.trim() || (result as { cv_extracted?: string }).cv_extracted || ''
+    const cvTextToSave = cv_text?.trim() || resultAny.cv_extracted || ''
 
+    // DB-insert: mapper nye AI-felter til eksisterende kolonner
+    // Felterne confidence, overall_reason, role_needs, candidate_brings kræver DB-migration
     const record = {
       name: name.trim(), score, grad, bars: aiBars, verdict,
-      headline:              result.headline ?? '',
-      summary:               result.summary ?? '',
-      personal_bio:          result.personal_bio ?? '',
-      mbti:                  result.mbti ?? '',
-      enneagram:             result.enneagram ?? '',
-      typology_summary:      result.typology_summary ?? '',
-      detailed_explanation:  result.detailed_explanation ?? '',
-      typology_strengths:    result.typology_strengths ?? [],
-      typology_weaknesses:   result.typology_weaknesses ?? [],
-      collab_strengths:      result.collab_strengths ?? [],
-      collab_risks:          result.collab_risks ?? [],
-      flags:                 result.flags ?? [],
-      strengths:             result.typology_strengths ?? [],
-      risks:                 result.typology_weaknesses ?? [],
-      interview_questions:   result.interview_questions ?? [],
-      role_fit_score:        (result as { role_fit_score?: number }).role_fit_score ?? null,
-      role_fit_reasoning:    (result as { role_fit_reasoning?: string }).role_fit_reasoning ?? '',
+      headline:              resultAny.headline ?? '',
+      summary:               resultAny.bottom_line ?? resultAny.summary ?? '',
+      personal_bio:          '',
+      mbti, enneagram,
+      typology_summary:      resultAny.personality_plain ?? resultAny.typology_summary ?? '',
+      detailed_explanation:  resultAny.detailed_explanation ?? '',
+      typology_strengths:    resultAny.typology_strengths ?? [],
+      typology_weaknesses:   resultAny.typology_weaknesses ?? [],
+      collab_strengths:      resultAny.team_contributions ?? resultAny.collab_strengths ?? [],
+      collab_risks:          resultAny.team_risks ?? resultAny.collab_risks ?? [],
+      flags:                 resultAny.flags ?? [],
+      strengths:             [],
+      risks:                 [],
+      interview_questions:   resultAny.interview_questions ?? [],
+      role_fit_score:        typeof resultAny.role_fit_score === 'number' ? resultAny.role_fit_score : null,
+      role_fit_reasoning:    resultAny.role_fit_summary ?? resultAny.role_fit_reasoning ?? '',
       cv_text:               cvTextToSave,
       application_text:      application_text?.trim() ?? '',
       linkedin_url:          linkedin_url?.trim() ?? '',

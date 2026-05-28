@@ -22,6 +22,17 @@ const initialJobs: Job[] = []
 
 // ─── Main app ────────────────────────────────────────────
 // ── DB helpers ───────────────────────────────────────────
+function parseMbtiEnneagram(type: string | undefined): { mbti: string; enneagram: string } {
+  if (!type) return { mbti: '', enneagram: '' }
+  const parts = type.trim().split(/\s+/)
+  return { mbti: parts[0] ?? '', enneagram: parts.slice(1).join(' ') }
+}
+
+function barsFromBehaviorBars(bb: Record<string, number> | undefined | null): { l: string; v: number }[] {
+  if (!bb || typeof bb !== 'object') return []
+  return Object.entries(bb).map(([l, v]) => ({ l, v }))
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapEmployee(e: any, teamId: number): Employee {
   return {
@@ -45,6 +56,19 @@ function mapEmployee(e: any, teamId: number): Employee {
     role: (e.role === 'leader' ? 'leader' : 'member') as 'member' | 'leader',
     leadership_style: e.leadership_style ?? '',
     teamId,
+    // Nye felter — undefined for gamle DB-rækker indtil migration
+    confidence: e.confidence ?? undefined,
+    confidence_reason: e.confidence_reason ?? undefined,
+    overall_score: e.overall_score ?? undefined,
+    overall_reason: e.overall_reason ?? undefined,
+    bottom_line: e.bottom_line ?? undefined,
+    role_needs: e.role_needs ?? undefined,
+    candidate_brings: e.candidate_brings ?? undefined,
+    role_fit_summary: e.role_fit_summary ?? undefined,
+    team_contributions: e.team_contributions ?? undefined,
+    team_risks: e.team_risks ?? undefined,
+    personality_plain: e.personality_plain ?? undefined,
+    behavior_bars: e.behavior_bars ?? undefined,
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +92,19 @@ function mapCandidate(c: any, jobId: number): Candidate {
     flags: c.flags ?? [], strengths: c.strengths ?? [],
     risks: c.risks ?? [], interview_questions: c.interview_questions ?? [],
     jobId,
+    // Nye felter — undefined for gamle DB-rækker indtil migration
+    confidence: c.confidence ?? undefined,
+    confidence_reason: c.confidence_reason ?? undefined,
+    overall_score: c.overall_score ?? undefined,
+    overall_reason: c.overall_reason ?? undefined,
+    bottom_line: c.bottom_line ?? undefined,
+    role_needs: c.role_needs ?? undefined,
+    candidate_brings: c.candidate_brings ?? undefined,
+    role_fit_summary: c.role_fit_summary ?? undefined,
+    team_contributions: c.team_contributions ?? undefined,
+    team_risks: c.team_risks ?? undefined,
+    personality_plain: c.personality_plain ?? undefined,
+    behavior_bars: c.behavior_bars ?? undefined,
   }
 }
 
@@ -381,31 +418,36 @@ export default function App() {
       const leader_context = buildLeaderContext(job?.team_id)
       const role_context   = buildRoleContext(job)
       const res = await callAnalyze(content, name, { team_context, leader_context, role_context })
-      const score = res.score ?? rnd(50, 90)
-      const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
+
+      // Ny schema-mapping
+      const { mbti, enneagram } = parseMbtiEnneagram(res.type)
+      const score = res.overall_score ?? res.score ?? rnd(50, 90)
+      const aiBars = barsFromBehaviorBars(res.behavior_bars)
+      const bars = aiBars.length > 0 ? aiBars : shuffle(ALL_METRICS).slice(0, 5).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
 
+      // DB-insert: mapper nye AI-felter til eksisterende kolonner
+      // Nye felter (confidence, overall_reason, role_needs, candidate_brings) kræver DB-migration
       const { data: saved, error: dbErr } = await supabase.from('candidates').insert({
         job_id: jobId, name, score, grad, bars, verdict,
         headline: res.headline ?? '',
-        summary: res.summary ?? '',
-        personal_bio: res.personal_bio ?? '',
-        mbti: res.mbti ?? '',
-        enneagram: res.enneagram ?? '',
-        typology_summary: res.typology_summary ?? '',
+        summary: res.bottom_line ?? res.summary ?? '',
+        personal_bio: '',
+        mbti: mbti || res.mbti || '',
+        enneagram: enneagram || res.enneagram || '',
+        typology_summary: res.personality_plain ?? res.typology_summary ?? '',
         detailed_explanation: res.detailed_explanation ?? '',
         typology_strengths: res.typology_strengths ?? [],
         typology_weaknesses: res.typology_weaknesses ?? [],
-        collab_strengths: res.collab_strengths ?? [],
-        collab_risks: res.collab_risks ?? [],
+        collab_strengths: res.team_contributions ?? res.collab_strengths ?? [],
+        collab_risks: res.team_risks ?? res.collab_risks ?? [],
         role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : null,
-        role_fit_reasoning: res.role_fit_reasoning ?? '',
+        role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '',
         leader_fit: res.leader_fit ?? '',
         flags: res.flags ?? [],
         interview_questions: res.interview_questions ?? [],
-        strengths: res.typology_strengths ?? res.strengths ?? [],
-        risks: res.typology_weaknesses ?? res.risks ?? [],
-        // Råmateriale (CV, ansøgning, LinkedIn)
+        strengths: [],
+        risks: [],
         cv_text: material?.cv_text ?? '',
         application_text: material?.application_text ?? '',
         linkedin_url: material?.linkedin_url ?? '',
@@ -417,9 +459,57 @@ export default function App() {
         alert('Database fejl ved oprettelse:\n' + (dbErr.message ?? 'Ukendt') + '\n\nHar du kørt typology.sql i Supabase?')
       }
 
-      const cand: Candidate = saved
-        ? mapCandidate(saved, jobId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], jobId }
+      // In-memory kandidat inkluderer alle nye felter (også dem der mangler DB-kolonner endnu)
+      const candFromRes: Candidate = {
+        id: Date.now() + Math.random(), name, score, grad, bars, verdict,
+        headline: res.headline ?? '',
+        summary: res.bottom_line ?? res.summary ?? '',
+        personal_bio: '',
+        mbti: mbti || res.mbti || '',
+        enneagram: enneagram || res.enneagram || '',
+        typology_summary: res.personality_plain ?? res.typology_summary ?? '',
+        detailed_explanation: res.detailed_explanation ?? '',
+        typology_strengths: res.typology_strengths ?? [],
+        typology_weaknesses: res.typology_weaknesses ?? [],
+        collab_strengths: res.team_contributions ?? res.collab_strengths ?? [],
+        collab_risks: res.team_risks ?? res.collab_risks ?? [],
+        role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : undefined,
+        role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '',
+        leader_fit: res.leader_fit ?? '',
+        flags: res.flags ?? [],
+        interview_questions: res.interview_questions ?? [],
+        strengths: [], risks: [], jobId,
+        // Nye felter
+        confidence: res.confidence,
+        confidence_reason: res.confidence_reason,
+        overall_score: res.overall_score,
+        overall_reason: res.overall_reason,
+        bottom_line: res.bottom_line,
+        role_needs: res.role_needs,
+        candidate_brings: res.candidate_brings,
+        role_fit_summary: res.role_fit_summary,
+        team_contributions: res.team_contributions,
+        team_risks: res.team_risks,
+        personality_plain: res.personality_plain,
+        behavior_bars: res.behavior_bars,
+      }
+
+      const cand: Candidate = saved ? mapCandidate(saved, jobId) : candFromRes
+      // Berig med nye felter der ikke er i DB endnu
+      if (saved) {
+        cand.confidence = res.confidence
+        cand.confidence_reason = res.confidence_reason
+        cand.overall_score = res.overall_score
+        cand.overall_reason = res.overall_reason
+        cand.bottom_line = res.bottom_line
+        cand.role_needs = res.role_needs
+        cand.candidate_brings = res.candidate_brings
+        cand.role_fit_summary = res.role_fit_summary
+        cand.team_contributions = res.team_contributions
+        cand.team_risks = res.team_risks
+        cand.personality_plain = res.personality_plain
+        cand.behavior_bars = res.behavior_bars
+      }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
         ...j, candidates: j.candidates.map(c => c.id === tempId ? cand : c),
@@ -703,30 +793,31 @@ export default function App() {
       const team_context = buildTeamContextMembersOnly(teamId)
       const leader_context = buildLeaderContext(teamId)
       const res = await callAnalyze(content, name, { team_context, leader_context })
-      const score = res.score ?? rnd(50, 90)
-      const bars = shuffle(ALL_METRICS).slice(0, 3).map((l: string) => ({ l, v: rnd(30, 97) }))
+      const { mbti: empMbti, enneagram: empEnneagram } = parseMbtiEnneagram(res.type)
+      const score = res.overall_score ?? res.score ?? rnd(50, 90)
+      const empAiBars = barsFromBehaviorBars(res.behavior_bars)
+      const bars = empAiBars.length > 0 ? empAiBars : shuffle(ALL_METRICS).slice(0, 5).map((l: string) => ({ l, v: rnd(30, 97) }))
       const verdict = verdictFromScore(score)
       const { data: saved, error: dbErr } = await supabase.from('employees').insert({
         team_id: teamId, name, score, grad, bars, verdict,
-        headline: res.headline ?? '', summary: res.summary ?? '',
-        personal_bio: res.personal_bio ?? '',
-        mbti: res.mbti ?? '',
-        enneagram: res.enneagram ?? '',
-        typology_summary: res.typology_summary ?? '',
+        headline: res.headline ?? '',
+        summary: res.bottom_line ?? res.summary ?? '',
+        personal_bio: '',
+        mbti: empMbti || res.mbti || '',
+        enneagram: empEnneagram || res.enneagram || '',
+        typology_summary: res.personality_plain ?? res.typology_summary ?? '',
         detailed_explanation: res.detailed_explanation ?? '',
         typology_strengths: res.typology_strengths ?? [],
         typology_weaknesses: res.typology_weaknesses ?? [],
-        collab_strengths: res.collab_strengths ?? [],
-        collab_risks: res.collab_risks ?? [],
+        collab_strengths: res.team_contributions ?? res.collab_strengths ?? [],
+        collab_risks: res.team_risks ?? res.collab_risks ?? [],
         role_fit_score: typeof res.role_fit_score === 'number' ? res.role_fit_score : null,
-        role_fit_reasoning: res.role_fit_reasoning ?? '',
+        role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '',
         leader_fit: res.leader_fit ?? '',
         role: asLeader ? 'leader' : 'member',
         leadership_style: asLeader ? leadershipStyle : '',
         flags: res.flags ?? [], interview_questions: res.interview_questions ?? [],
-        strengths: res.typology_strengths ?? res.strengths ?? [],
-        risks: res.typology_weaknesses ?? res.risks ?? [],
-        // Råmateriale (CV, ansøgning, LinkedIn)
+        strengths: [], risks: [],
         cv_text: material?.cv_text ?? '',
         application_text: material?.application_text ?? '',
         linkedin_url: material?.linkedin_url ?? '',
@@ -738,7 +829,7 @@ export default function App() {
       }
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.summary ?? '', personal_bio: res.personal_bio ?? '', mbti: res.mbti ?? '', enneagram: res.enneagram ?? '', typology_summary: res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.collab_strengths ?? [], collab_risks: res.collab_risks ?? [], role_fit_score: res.role_fit_score, role_fit_reasoning: res.role_fit_reasoning ?? '', leader_fit: res.leader_fit ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: res.typology_strengths ?? res.strengths ?? [], risks: res.typology_weaknesses ?? res.risks ?? [], role: asLeader ? 'leader' : 'member', leadership_style: asLeader ? leadershipStyle : '', teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.bottom_line ?? res.summary ?? '', personal_bio: '', mbti: empMbti || res.mbti || '', enneagram: empEnneagram || res.enneagram || '', typology_summary: res.personality_plain ?? res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.team_contributions ?? res.collab_strengths ?? [], collab_risks: res.team_risks ?? res.collab_risks ?? [], role_fit_score: res.role_fit_score, role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '', leader_fit: res.leader_fit ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: [], risks: [], role: asLeader ? 'leader' : 'member', leadership_style: asLeader ? leadershipStyle : '', teamId }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -830,8 +921,12 @@ export default function App() {
       }
       const name = item.type === 'linkedin' ? nameFromUrl(item.name) : item.name
       const res = await callAnalyze(content, name)
+      const { mbti: cvMbti, enneagram: cvEnneagram } = parseMbtiEnneagram(res.type)
       setCvResults(prev => prev.map(r => r.id !== tempId ? r : {
-        id: tempId, name, score: res.score ?? 0, mbti: res.mbti ?? '', enneagram: res.enneagram ?? '',
+        id: tempId, name,
+        score: res.overall_score ?? res.score ?? 0,
+        mbti: cvMbti || res.mbti || '',
+        enneagram: cvEnneagram || res.enneagram || '',
         grad, headline: res.headline ?? '', flags: (res.flags ?? []).slice(0, 2),
       }))
     } catch (err) {
@@ -898,266 +993,214 @@ export default function App() {
 
   // ── Candidate profile helpers ──
   function renderCandProfile(c: Candidate, j: Job) {
-    const existingLabels = c.bars.map(b => b.l)
-    const extra = ALL_METRICS.filter(m => !existingLabels.includes(m))
-    const fullBars = [...c.bars, ...shuffle(extra).slice(0, 3).map(l => ({ l, v: rnd(35, 90) }))].slice(0, 6)
+    const overallScore = c.overall_score ?? c.score
+    const typeDisplay = (c.mbti || c.enneagram) ? `${c.mbti}${c.enneagram ? ' ' + c.enneagram : ''}` : null
+    const sortedFlags = c.flags?.length
+      ? [...c.flags].sort((a, b) => {
+          const order: Record<string, number> = { red: 0, warn: 1, ok: 2 }
+          return (order[a.severity] ?? 2) - (order[b.severity] ?? 2)
+        })
+      : []
+    void c.bars // bruges stadig af employee-profil indirekte — behold for compat
     const sClass = scoreClass(c.score)
-    const vTag = c.verdict === 'Anbefalet' ? 'ok' : c.verdict === 'Forsigtighed' ? 'warn' : 'bad'
-    const flags = c.flags?.length ? c.flags : [{ severity: 'ok' as const, text: 'Profil analyseret uden kritiske fund' }]
-    const strengths = c.strengths?.length ? c.strengths : ['Ikke specificeret']
-    const risks = c.risks?.length ? c.risks : ['Ikke specificeret']
-    const questions = c.interview_questions?.length ? c.interview_questions : ['Beskriv din arbejdsstil i et nyt team.']
-
     return (
       <div className="cp-scroll">
-        <div className="cp-hero">
-          <div className="cp-avatar" style={{ background: c.grad }}>{initials(c.name)}</div>
-          <div className="cp-identity">
-            <div className="cp-name">{c.name}</div>
-            <div className="cp-headline">{c.headline || j.title}</div>
-            {(c.mbti || c.enneagram) && (
-              <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ padding: '4px 11px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 6, fontSize: 12, fontWeight: 700, letterSpacing: '1.5px', fontFamily: 'monospace' }}>
-                  {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
-                </span>
+        {/* BOX 1 — SNAPSHOT HEADER */}
+        <div style={{ margin: '0 0 16px', padding: '28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+          <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            <div className="cp-avatar" style={{ background: c.grad, flexShrink: 0 }}>{initials(c.name)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{c.name}</div>
+              <div style={{ fontSize: 14, color: 'var(--m1)', fontWeight: 300, marginBottom: 10 }}>{c.headline || j.title}</div>
+              {typeDisplay && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ padding: '4px 12px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 6, fontSize: 12, fontWeight: 700, letterSpacing: '1.5px', fontFamily: 'monospace' }}>
+                    {typeDisplay}
+                  </span>
+                  {c.confidence && (
+                    <span style={{ padding: '3px 9px', background: 'var(--s2)', color: 'var(--m1)', borderRadius: 6, fontSize: 11, fontWeight: 500, border: '1px solid var(--b1)' }}>
+                      {c.confidence} sikkerhed
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexShrink: 0 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: "'Fraunces', serif", fontSize: 52, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>{overallScore}</div>
+                <div style={{ fontSize: 12, color: 'var(--m2)', marginTop: 2 }}>/ 100</div>
+                <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: 6 }}>Helhed</div>
               </div>
-            )}
+              {typeof c.role_fit_score === 'number' && (
+                <div style={{ textAlign: 'center', opacity: 0.65 }}>
+                  <div style={{ fontFamily: "'Fraunces', serif", fontSize: 34, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>{c.role_fit_score}</div>
+                  <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 2 }}>/ 100</div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: 6 }}>Rolle-fit</div>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="cp-verdict-block">
-            <div className={`cp-score-big ${sClass}`}>{c.score}</div>
-            <div className="cp-score-label">Match score</div>
-            <div className={`cp-verdict-tag ${vTag}`}>{c.verdict}</div>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--b1)' }}>
+            {c.overall_reason && (
+              <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--m1)', fontWeight: 300, lineHeight: 1.65 }}>{c.overall_reason}</p>
+            )}
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--m2)' }}>
+                <strong style={{ color: 'var(--ink)', fontWeight: 500 }}>Helhed</strong> — samlet vurdering på tværs af rolle-fit, team-fit og opmærksomhedspunkter
+              </span>
+              {typeof c.role_fit_score === 'number' && (
+                <span style={{ fontSize: 11, color: 'var(--m2)' }}>
+                  <strong style={{ color: 'var(--ink)', fontWeight: 500 }}>Rolle-fit</strong> — match til præcis denne stillings krav
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {c.personal_bio && (
-          <div style={{ margin: '0 24px 0', padding: '18px 22px', background: 'var(--s2)', borderRadius: 12, border: '1px solid var(--b1)', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Om personen</div>
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.75, fontWeight: 300 }}>{c.personal_bio}</p>
+        {/* BOX 2 — BUNDLINJE */}
+        {(c.bottom_line || c.summary) && (
+          <div style={{ margin: '0 0 16px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)', borderLeft: '3px solid var(--ink)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 10 }}>Bundlinje</div>
+            <p style={{ margin: 0, fontSize: 15, color: 'var(--ink)', lineHeight: 1.8, fontWeight: 300 }}>{c.bottom_line || c.summary}</p>
           </div>
         )}
 
-        <div className="cp-grid">
-          <div className="cp-col">
-            <div className="cp-section">
-              <div className="cp-section-title">Adfærdsprofil</div>
-              {fullBars.map((b, i) => <BarRow key={i} bar={b} prefix="cp" />)}
-            </div>
-            {/* Personprofil — MBTI + Enneagram */}
-            <div className="cp-section">
-              <div className="cp-section-title">Personprofil</div>
-
-              {c.mbti || c.enneagram ? (
-                <>
-                  {/* Formodet typekombination — prominent */}
-                  <div style={{ background: 'var(--ink)', color: 'var(--bg)', borderRadius: 10, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 4, opacity: .8 }}>Formodet typekombination</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: 26, fontWeight: 700, letterSpacing: '3px' }}>
-                        {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, fontSize: 10, opacity: .7 }}>
-                      {c.mbti && <span>MBTI</span>}
-                      {c.mbti && c.enneagram && <span>·</span>}
-                      {c.enneagram && <span>Tritype</span>}
-                    </div>
-                  </div>
-
-                  {/* Hverdagsforklaring */}
-                  {c.typology_summary && (
-                    <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>
-                      {c.typology_summary}
-                    </p>
-                  )}
-
-                  {/* Expandable detaljeret forklaring */}
-                  {c.detailed_explanation && (
-                    <TypologyExplainer text={c.detailed_explanation} />
-                  )}
-
-                  {/* Styrker / svagheder grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
-                    {c.typology_strengths.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 6, fontWeight: 500 }}>Typologiske styrker</div>
-                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {c.typology_strengths.map((s, i) => (
-                            <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, paddingLeft: 12, position: 'relative' }}>
-                              <span style={{ position: 'absolute', left: 0, color: 'var(--accent)' }}>+</span>{s}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {c.typology_weaknesses.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 6, fontWeight: 500 }}>Typologiske svagheder</div>
-                        <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {c.typology_weaknesses.map((s, i) => (
-                            <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, paddingLeft: 12, position: 'relative' }}>
-                              <span style={{ position: 'absolute', left: 0, color: 'var(--warn)' }}>−</span>{s}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--m2)', fontStyle: 'italic' }}>
-                  Profilanalyse er endnu ikke kørt for denne person.
-                </p>
+        {/* BOX 3 — ROLLE-FIT */}
+        {(typeof c.role_fit_score === 'number' || c.role_fit_summary || c.role_fit_reasoning) && (
+          <div style={{ margin: '0 0 16px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Rolle-fit</div>
+              {typeof c.role_fit_score === 'number' && (
+                <span style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
+                  {c.role_fit_score}<span style={{ fontSize: 12, color: 'var(--m2)', fontWeight: 400 }}> / 100</span>
+                </span>
               )}
             </div>
-
-            {/* Rolle-fit (kun hvis stillingen havde rolle-kontekst) */}
-            {(typeof c.role_fit_score === 'number' || c.role_fit_reasoning) && (
-              <div className="cp-section">
-                <div className="cp-section-title">Rolle-fit til denne stilling</div>
-                {typeof c.role_fit_score === 'number' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-                    <div style={{
-                      fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 700,
-                      color: c.role_fit_score >= 75 ? 'var(--accent)' : c.role_fit_score >= 50 ? 'var(--warn)' : 'var(--danger)',
-                    }}>
-                      {c.role_fit_score}<span style={{ fontSize: 14, color: 'var(--m2)', fontWeight: 400 }}>/100</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '1px' }}>Match til rollens krav</div>
+            {c.role_needs?.length ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10 }}>Rollen kræver</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {c.role_needs.map((need, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: '50%', background: 'var(--s2)', border: '1px solid var(--b1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--m1)', marginTop: 1 }}>{i + 1}</span>
+                        <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.5 }}>{need}</span>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {c.role_fit_reasoning && (
-                  <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>{c.role_fit_reasoning}</p>
-                )}
-              </div>
-            )}
-
-            {/* Leder-fit */}
-            {c.leader_fit && (
-              <div className="cp-section">
-                <div className="cp-section-title">Under denne leder</div>
-                <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300 }}>{c.leader_fit}</p>
-              </div>
-            )}
-
-            {/* Samarbejde i team */}
-            {(c.collab_strengths.length > 0 || c.collab_risks.length > 0) && (
-              <div className="cp-section">
-                <div className="cp-section-title">Samarbejde i team</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  {c.collab_strengths.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8, fontWeight: 500 }}>Sådan bidrager de</div>
-                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {c.collab_strengths.map((s, i) => (
-                          <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, lineHeight: 1.5, paddingLeft: 16, position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: 0, color: 'var(--accent)' }}>✓</span>{s}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {c.collab_risks.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 8, fontWeight: 500 }}>Mulige udfordringer</div>
-                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {c.collab_risks.map((s, i) => (
-                          <li key={i} style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 300, lineHeight: 1.5, paddingLeft: 16, position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: 0, color: 'var(--warn)' }}>⚠</span>{s}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
-            <div className="cp-section">
-              <div className="cp-section-title">Styrker</div>
-              <div className="cp-tags">{strengths.map((s, i) => <span key={i} className="cp-tag strength">{s}</span>)}</div>
-              <div className="cp-section-title" style={{ marginTop: 14 }}>Risici</div>
-              <div className="cp-tags">{risks.map((r, i) => <span key={i} className="cp-tag risk">{r}</span>)}</div>
-            </div>
-          </div>
-          <div className="cp-col">
-            {/* Indsendt materiale — råmateriale fra ansøgningen */}
-            {(c.cv_text || c.application_text || c.linkedin_url || c.cv_was_pdf) && (
-              <div className="cp-section" style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                  <div className="cp-section-title" style={{ marginBottom: 0 }}>Indsendt materiale</div>
-                  <button
-                    type="button"
-                    onClick={() => setViewMaterialFor(c)}
-                    style={{
-                      padding: '5px 11px', borderRadius: 7, border: '1px solid var(--b1)',
-                      background: 'var(--s2)', color: 'var(--m1)', fontSize: 11, fontWeight: 500,
-                      fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', transition: 'all .12s',
-                      letterSpacing: '.3px',
-                    }}
-                  >
-                    Vis fuldt indhold →
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {c.linkedin_url && (
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>LinkedIn</div>
-                      <a href={c.linkedin_url.startsWith('http') ? c.linkedin_url : `https://${c.linkedin_url}`} target="_blank" rel="noopener noreferrer"
-                        style={{ fontSize: 12, color: 'var(--a2)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                        {c.linkedin_url} ↗
-                      </a>
-                    </div>
-                  )}
-
-                  {c.application_text && (
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>Ansøgning</div>
-                      <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                        {c.application_text}
-                      </div>
-                    </div>
-                  )}
-
-                  {(c.cv_text || c.cv_was_pdf) && (
-                    <div>
-                      <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        CV {c.cv_was_pdf && <span style={{ padding: '1px 6px', background: 'var(--s3)', borderRadius: 4, fontSize: 9, color: 'var(--m1)', letterSpacing: '.5px' }}>PDF</span>}
-                      </div>
-                      {c.cv_text ? (
-                        <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
-                          {c.cv_text}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10 }}>Kandidaten har</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {(c.candidate_brings ?? []).map((bring, i) => {
+                      const isGap = bring === 'ikke dokumenteret i CV'
+                      return (
+                        <div key={i} style={{ fontSize: 13, lineHeight: 1.5, paddingLeft: 28, color: isGap ? 'var(--m2)' : 'var(--ink)', fontStyle: isGap ? 'italic' : 'normal', fontWeight: isGap ? 300 : 400 }}>
+                          {isGap ? '– ' : '✓ '}{bring}
                         </div>
-                      ) : (
-                        <div style={{ fontSize: 12, color: 'var(--m2)', fontStyle: 'italic' }}>CV indsendt som PDF og analyseret af AI</div>
-                      )}
-                    </div>
-                  )}
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
+            ) : null}
+            {(c.role_fit_summary || c.role_fit_reasoning) && (
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--ink)', lineHeight: 1.7, fontWeight: 300, borderTop: c.role_needs?.length ? '1px solid var(--b1)' : 'none', paddingTop: c.role_needs?.length ? 16 : 0 }}>
+                {c.role_fit_summary || c.role_fit_reasoning}
+              </p>
             )}
+          </div>
+        )}
 
-            <div className="cp-section">
-              <div className="cp-section-title">Samlet vurdering</div>
-              <p className="cp-summary">{c.summary || 'Kandidaten er vurderet på baggrund af det tilgængelige materiale.'}</p>
-            </div>
-            <div className="cp-section">
-              <div className="cp-section-title">Opmærksomhedspunkter</div>
-              {flags.map((f, i) => {
-                const cls = f.severity === 'red' ? 'red' : f.severity === 'ok' ? 'ok' : 'warn'
-                const icon = cls === 'red' ? '🚩' : cls === 'ok' ? '✦' : '⚠'
-                return <div key={i} className={`cp-flag ${cls}`}><span className="cp-flag-icon">{icon}</span><span>{f.text}</span></div>
+        {/* BOX 4 — VÆR OPMÆRKSOM PÅ */}
+        {sortedFlags.length > 0 && (
+          <div style={{ margin: '0 0 16px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 14 }}>Vær opmærksom på</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {sortedFlags.map((f, i) => {
+                const bg = f.severity === 'red' ? 'var(--soft-rose-bg)' : f.severity === 'ok' ? 'var(--soft-sage-bg)' : 'var(--soft-amber-bg)'
+                const borderCol = f.severity === 'red' ? '#d4aaaa' : f.severity === 'ok' ? '#a4c4a4' : '#d4c080'
+                const iconColor = f.severity === 'red' ? 'var(--danger)' : f.severity === 'ok' ? 'var(--accent)' : 'var(--warn)'
+                const icon = f.severity === 'red' ? '●' : f.severity === 'ok' ? '✦' : '▲'
+                return (
+                  <div key={i} style={{ padding: '14px 16px', background: bg, borderRadius: 10, border: `1px solid ${borderCol}` }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ color: iconColor, fontSize: 10, marginTop: 3, flexShrink: 0 }}>{icon}</span>
+                      <div>
+                        <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 500, lineHeight: 1.5 }}>{f.text}</div>
+                        {f.action && (
+                          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--m1)', fontWeight: 300, lineHeight: 1.5 }}>
+                            <span style={{ fontWeight: 600 }}>Handling: </span>{f.action}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
               })}
             </div>
-            <div className="cp-section">
-              <div className="cp-section-title">Foreslåede interviewspørgsmål</div>
-              {questions.map((q, i) => <div key={i} className="cp-question">{q}</div>)}
+          </div>
+        )}
+
+        {/* INDSENDT MATERIALE */}
+        {(c.cv_text || c.application_text || c.linkedin_url || c.cv_was_pdf) && (
+          <div style={{ margin: '0 0 24px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Indsendt materiale</div>
+              <button type="button" onClick={() => setViewMaterialFor(c)} style={{ padding: '5px 11px', borderRadius: 7, border: '1px solid var(--b1)', background: 'var(--s2)', color: 'var(--m1)', fontSize: 11, fontWeight: 500, fontFamily: "'DM Sans', sans-serif", cursor: 'pointer' }}>
+                Vis fuldt indhold →
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {c.linkedin_url && (
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>LinkedIn</div>
+                  <a href={c.linkedin_url.startsWith('http') ? c.linkedin_url : `https://${c.linkedin_url}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: 'var(--a2)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                    {c.linkedin_url} ↗
+                  </a>
+                </div>
+              )}
+              {c.application_text && (
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600 }}>Ansøgning</div>
+                  <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                    {c.application_text}
+                  </div>
+                </div>
+              )}
+              {(c.cv_text || c.cv_was_pdf) && (
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--m2)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    CV {c.cv_was_pdf && <span style={{ padding: '1px 6px', background: 'var(--s3)', borderRadius: 4, fontSize: 9, color: 'var(--m1)', letterSpacing: '.5px' }}>PDF</span>}
+                  </div>
+                  {c.cv_text ? (
+                    <div style={{ fontSize: 12, color: 'var(--m3)', lineHeight: 1.6, fontWeight: 300, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' }}>
+                      {c.cv_text}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--m2)', fontStyle: 'italic' }}>CV indsendt som PDF og analyseret af AI</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
+
+        {/* DUMMY — holder cp-scroll struktur */}
+        {false && (
+          <div style={{ display: 'none' }}>
+            <div style={{ background: 'var(--ink)', color: 'var(--bg)', borderRadius: 6, padding: '4px 11px', fontSize: 12, fontWeight: 700, letterSpacing: '1.5px', fontFamily: 'monospace' }}>
+              {c.mbti}{c.enneagram ? ` ${c.enneagram}` : ''}
+            </div>
+          </div>
+        )}
+        {/* Boks 5-7 bygges i næste runde: interview_questions, leader_fit/team, personality_plain/behavior_bars */}
+
+        <p style={{ display: 'none' }}>{c.summary}{c.personal_bio}</p>
       </div>
     )
   }
+
 
   // ── Status guards ──────────────────────────────────
   if (orgStatus === 'loading') {

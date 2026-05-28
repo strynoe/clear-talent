@@ -8,32 +8,34 @@ function rnd(min: number, max: number) {
 }
 
 function mockResult(name: string) {
+  const overall = rnd(42, 94)
   return {
     headline: 'Erfaren professional med solid baggrund',
-    score: rnd(42, 94),
-    personal_bio: `${name} fremstår som en engageret person med en tydelig retning i sit karrierevalg.`,
-    summary: `${name} fremstår som en kompetent kandidat med relevant erfaring.`,
-    mbti: 'ENTP',
-    enneagram: '387',
-    typology_summary: 'CV-mønstre tyder på en ENTP 387-profil — energisk og idédrevet.',
-    detailed_explanation: 'Dette er en placeholder — AI-analyse kræver ANTHROPIC_API_KEY.',
-    typology_strengths: ['Idégenerering', 'Præstationsdrevet', 'Beslutsomhed', 'Entusiasme'],
-    typology_weaknesses: ['Kan starte mange projekter og afslutte få'],
-    collab_strengths: ['Bringer nye perspektiver', 'Tør tage svære samtaler'],
-    collab_risks: ['Kan komme i konflikt med meget strukturerede profiler'],
-    bars: [
-      { l: 'Initiativ', v: rnd(50, 90) },
-      { l: 'Kommunikation', v: rnd(50, 90) },
-      { l: 'Analytisk tænkning', v: rnd(50, 90) },
-      { l: 'Fremdrift', v: rnd(50, 90) },
-      { l: 'Tilpasningsevne', v: rnd(50, 90) },
-    ],
-    flags: [{ severity: 'ok', text: 'Profilanalyse gennemført' }],
+    type: 'ENTP 387',
+    confidence: 'lav' as const,
+    confidence_reason: 'Mock-data — AI-analyse kræver ANTHROPIC_API_KEY.',
+    overall_score: overall,
+    overall_reason: 'Mock-score uden reel vurdering.',
+    bottom_line: `${name} fremstår som en engageret profil. Dette er mock-data — indsæt ANTHROPIC_API_KEY for rigtig analyse.`,
+    role_fit_score: rnd(40, 90),
+    role_needs: ['Relevant erfaring', 'Faglige kompetencer'],
+    candidate_brings: ['ikke dokumenteret i CV', 'ikke dokumenteret i CV'],
+    role_fit_summary: 'Mock rolle-fit — AI-analyse kræver ANTHROPIC_API_KEY.',
+    flags: [{ severity: 'ok' as const, text: 'Profilanalyse gennemført (mock)', action: 'Ingen handling nødvendig' }],
     interview_questions: [
-      'Beskriv et projekt du startede med høj energi.',
-      'Hvornår pressede du dig selv mest?',
-      'Hvad motiverer dig mest?',
+      { question: 'Beskriv et projekt du startede med høj energi.', probes: 'Mock-spørgsmål' },
     ],
+    team_contributions: ['Bringer nye perspektiver'],
+    team_risks: ['Kan komme i konflikt med strukturerede profiler'],
+    personality_plain: 'CV-mønstre tyder på en ENTP 387-profil — energisk og idédrevet. Dette er mock-data.',
+    behavior_bars: {
+      'Analytisk tænkning': rnd(50, 90),
+      'Beslutningsevne': rnd(50, 90),
+      'Struktur': rnd(30, 70),
+      'Initiativ': rnd(60, 95),
+      'Samarbejde': rnd(50, 85),
+      'Tilpasningsevne': rnd(55, 90),
+    },
   }
 }
 

@@ -1,9 +1,3 @@
-const METRICS = [
-  'Initiativ', 'Kommunikation', 'Samarbejde', 'Struktur',
-  'Analytisk tænkning', 'Fremdrift', 'Empati',
-  'Tilpasningsevne', 'Beslutningsevne', 'Stresshåndtering',
-]
-
 interface AnalysisContext {
   roleContext?: string
   leaderContext?: string
@@ -18,17 +12,65 @@ export interface AnalysisPromptConfig {
 }
 
 export function buildAnalysisPrompt(ctx: AnalysisContext = {}): AnalysisPromptConfig {
-  const conditionalFields = [
-    ctx.roleContext
-      ? `  "role_fit_score": tal 0-100 (match mod DENNE specifikke rolle — ikke generel kvalitet),\n  "role_fit_reasoning": "2-3 sætninger der refererer direkte til CV-fakta og rollebeskrivelsen",`
-      : '',
-    ctx.leaderContext
-      ? `  "leader_fit": "2-3 sætninger om konkret match og friktion med denne specifikke leder",`
-      : '',
-    ctx.includeCvExtract
-      ? `  "cv_extracted": "udtræk hele CV'ets tekst i ren form med overskrifter (kun ved PDF — ellers udelad feltet)",`
-      : '',
-  ].filter(Boolean).join('\n')
+  const schemaLines = [
+    `  "headline": "specifik baggrund — max 55 tegn, konkret hvad de har gjort",`,
+    `  "type": "MBTI + tritype som ét felt, fx 'ISTJ 163'",`,
+    `  "confidence": "lav | middel | høj",`,
+    `  "confidence_reason": "1 sætning: hvad begrænser eller styrker sikkerheden i type-vurderingen",`,
+    `  "overall_score": tal 0-100,`,
+  ]
+
+  if (ctx.roleContext) {
+    schemaLines.push(
+      `  "overall_reason": "1 sætning: hvad der trækker helheds-scoren op/ned ift. rolle-fit — typisk team-fit eller opmærksomhedspunkter/flags. MÅ IKKE springes over.",`,
+    )
+  }
+
+  schemaLines.push(
+    `  "bottom_line": "2-3 sætninger: hvem er personen, om de passer til rollen, og den ÉNE vigtigste ting at være opmærksom på. Ingen gentagelse af tal/forløb der står i andre felter.",`,
+  )
+
+  if (ctx.roleContext) {
+    schemaLines.push(
+      `  "role_fit_score": tal 0-100 (SNÆVERT: match mod præcis denne stillings krav — skills, erfaring, niveau — ikke generel kvalitet),`,
+      `  "role_needs": ["rollens 3-4 vigtigste krav, kort formuleret"],`,
+      `  "candidate_brings": ["for HVERT krav i role_needs (SAMME rækkefølge): konkret CV-bevis — tal/titel/resultat — eller teksten 'ikke dokumenteret i CV'"],`,
+      `  "role_fit_summary": "2-3 sætninger om rolle-fit, hver forankret i en konkret CV-detalje",`,
+    )
+  }
+
+  schemaLines.push(
+    `  "flags": [{"severity": "red|warn|ok", "text": "kort konkret observation med reference til specifikt CV-element", "action": "hvad rekrutteren konkret kan gøre — fx 'spørg til X til samtalen' eller 'verificér via reference'"}],`,
+    `  "interview_questions": [{"question": "spørgsmål rettet mod specifik anomali, gap eller mønster fra dette CV", "probes": "hvilket flag eller hvilken usikkerhed dette spørgsmål undersøger"}],`,
+  )
+
+  if (ctx.leaderContext) {
+    schemaLines.push(
+      `  "leader_fit": "2 sætninger om konkret match og friktion med denne specifikke leder",`,
+    )
+  }
+
+  schemaLines.push(
+    `  "team_contributions": ["konkret bidrag til det eksisterende team${ctx.teamContext ? ' — referer til navngivne kolleger' : ''}"],`,
+    `  "team_risks": ["mulig gnidning med teamet${ctx.teamContext ? ' — referer til navngivne kolleger' : ''}"],`,
+    `  "personality_plain": "type-forklaring i hverdagssprog MAX 6-8 sætninger — INGEN uforklarede fagudtryk (ikke Si-dominans, Te-auxiliary, Ni osv.). Min. 2 referencer til navngivne jobs eller konkrete CV-detaljer. Brug signalsprog: 'CV-mønstre tyder på...'",`,
+    `  "behavior_bars": {`,
+    `    "Analytisk tænkning": tal 0-100,`,
+    `    "Beslutningsevne": tal 0-100,`,
+    `    "Struktur": tal 0-100,`,
+    `    "Initiativ": tal 0-100,`,
+    `    "Samarbejde": tal 0-100,`,
+    `    "Tilpasningsevne": tal 0-100`,
+    `  }`,
+  )
+
+  if (ctx.includeCvExtract) {
+    schemaLines.push(
+      `  "cv_extracted": "udtræk hele CV'ets tekst i ren form med overskrifter (kun ved PDF — ellers udelad feltet)"`,
+    )
+  }
+
+  const schema = `{\n${schemaLines.join('\n')}\n}`
 
   const system = `Du er en analytiker der vurderer personlighed og arbejdsstil ud fra karrieremateriale.
 
@@ -60,30 +102,23 @@ ENNEAGRAM TRITYPE — én type fra hvert center i styrkeorden:
 
 Tritype skrives som 3 cifre i dominansorden, fx 387.
 
-━━━ KRAV ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ ANALYSEMETODOLOGI ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 SIGNALSPROG er obligatorisk for al typologi:
 Brug: "CV-mønstre tyder på...", "signalerer sandsynligvis...", "peger mod..."
 ALDRIG: "kandidaten er ENTP" eller "personen har tritype 3"
 
-detailed_explanation: Minimum 2 konkrete referencer til navngivne jobs, specifikke formuleringer
-eller karrierebevægelser fra CV'et. Forklar præcis hvad der peger mod hver typedimension og tritype-ciffer.
-
-personal_bio og summary: Sætninger der kan gælde enhver kandidat er forbudt. Brug
-specifikke detaljer fra dette materiale — navngivne roller, skift, formuleringer.
+personality_plain: Minimum 2 konkrete referencer til navngivne jobs, specifikke formuleringer
+eller karrierebevægelser fra CV'et. Forklar præcis hvad der peger mod typen i hverdagssprog.
 
 interview_questions: Hvert spørgsmål SKAL referere til en specifik anomali, uforklaret
 transition, gap eller mønster fra dette CV. Generiske spørgsmål er forbudt.
-
-bars: Vælg de 5 mest informative dimensioner fra listen og score dem 0-100 ud fra CV-evidens.
-Score hvad materialet faktisk viser — ikke hvad typeprofilen teoretisk indebærer.
-Tilgængelige dimensioner: ${METRICS.join(', ')}
 ${ctx.teamContext ? `
 ━━━ EKSISTERENDE TEAM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${ctx.teamContext}
 
-Vurdér konkret interaktion med disse navngivne teammedlemmer i collab_risks og collab_strengths.
+Vurdér konkret interaktion med disse navngivne teammedlemmer i team_contributions og team_risks.
 ` : ''}${ctx.leaderContext ? `
 ━━━ LEDER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -95,31 +130,48 @@ Vurdér specifikt match og friktion med denne konkrete leder i leader_fit.
 
 ${ctx.roleContext}
 
-role_fit_score = match mod DENNE specifikke rolle. Referer til konkrete CV-fakta og rollekrav.
+role_fit_score = SNÆVERT match mod DENNE specifikke rolle.
+candidate_brings skal referere til konkrete CV-fakta — tal, titler, resultater.
 ` : ''}
+━━━ REGLER FOR OUTPUT (overhold alle) ━━━━━━━━━━━━━━
+
+1. INGEN GENTAGELSE. Hver oplysning må kun optræde ét sted i hele outputtet.
+   Gentag ALDRIG karriereforløb, tal, titler eller egenskaber på tværs af felter.
+   Har du skrevet "18 medarbejdere" eller "11% spildreduktion" i ét felt, så skriv
+   det ikke igen i et andet.
+
+2. FORANKR I CV'ET. Hver vurdering skal hvile på en konkret detalje fra CV'et —
+   et tal, en titel, et resultat, en formulering. Kan en påstand ikke forankres i
+   noget konkret fra CV'et, så lad være med at skrive den. Generelle
+   personligheds-floskler uden CV-belæg er forbudt.
+
+3. HVERDAGSSPROG. Brug ALDRIG uforklarede typologi-termer som "Si-dominans",
+   "Te-auxiliary", "Ni", "Type 1-kerne" osv. Du må nævne selve typen (fx "ISTJ 163"),
+   men enhver forklaring skal kunne forstås af en læser uden typologi-forkundskaber.
+   Skriv fx "har sans for detaljer og faste rutiner" i stedet for "Si-dominans".
+
+4. VÆR ÆRLIG OM USIKKERHED. Et CV er et begrænset grundlag for en type-vurdering.
+   Brug "confidence" til at angive sikkerhed og "confidence_reason" til at forklare
+   hvad der begrænser eller styrker vurderingen. Skriv ikke selvsikkert om noget
+   der reelt er et kvalificeret gæt.
+
+5. TO ADSKILTE SCORES, INGEN ETIKET. Disse er IKKE det samme og må ikke være ens by default:
+   - "role_fit_score" = SNÆVERT: match mod præcis denne stillings krav (kun rollen).
+   - "overall_score" = HELHEDEN: vægter rolle-fit PLUS team-fit PLUS flags.
+     Denne kan og bør være lavere end rolle-fit, hvis der er risici eller gnidninger.
+   Begge er RENE TAL (0-100). Du må ALDRIG kategorisere kandidaten som
+   "anbefalet", "frarådet", "bestået" e.l. — der findes intet cutoff-punkt.
+   Scoren er information som mennesket selv vægter, ikke en dom systemet fælder.
+
+6. LÆNGDE. Overhold længdegrænserne i skemaet. Færre, skarpere sætninger er bedre.
+
 ━━━ OUTPUT — kun valid JSON, ingen markdown ━━━━━━━━
 
-{
-  "headline": "specifik baggrund — max 55 tegn, konkret hvad de har gjort",
-  "score": tal 30-97 (samlet professionel styrke baseret på erfaring og dybde),
-  "personal_bio": "2-3 sætninger om personen som menneske med konkrete karrieredetaljer fra CV'et",
-  "summary": "3 præcise sætninger — hvad er mest interessant ved denne profil, hvad bør virksomheden vide",
-  "mbti": "XXXX",
-  "enneagram": "XXX",
-  "typology_summary": "1-2 sætninger med signalsprog, fx 'CV-mønstre tyder på en ENTP 387-profil — ...'",
-  "detailed_explanation": "6-8 sætninger — minimum 2 CV-referencer — gennemgå MBTI-bogstaver, kognitive funktioner og hvert tritype-ciffer i hverdagssprog",
-  "typology_strengths": ["styrke med teori-reference og kobling til CV-fund", "...", "...", "..."],
-  "typology_weaknesses": ["svaghed med teori-reference og CV-kobling", "...", "..."],
-  "collab_strengths": ["konkret bidrag til team${ctx.teamContext ? ' — referer til navngivne kolleger' : ''}", "...", "..."],
-  "collab_risks": ["konkret udfordring${ctx.teamContext ? ' med reference til navngivne kolleger' : ''}", "..."],${conditionalFields ? '\n' + conditionalFields : ''}
-  "bars": [{"l": "DimensionsNavn", "v": tal 0-100}, {"l": "...", "v": ...}, {"l": "...", "v": ...}, {"l": "...", "v": ...}, {"l": "...", "v": ...}],
-  "flags": [{"severity": "red|warn|ok", "text": "konkret observation med reference til specifikt CV-element"}],
-  "interview_questions": ["spørgsmål rettet mod specifik anomali eller gap fra dette CV", "...", "..."]
-}`
+${schema}`
 
   return {
     system,
     temperature: 0.3,
-    maxTokens: 2000,
+    maxTokens: 3000,
   }
 }
