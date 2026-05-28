@@ -44,6 +44,10 @@ function mockResult(name: string) {
     team_contributions: ['Bidrager med dybde', 'Stærk indre kompas'],
     team_risks: ['Kan trække sig under pres'],
     personality_plain: 'CV-mønstre tyder på en INFJ 459-profil — reflekteret og analytisk med fokus på dybde og mening. Dette er mock-data.',
+    data_sources: { cv: false, ansoegning: false, linkedin: false, spoergeskema: false },
+    candidate_summary: 'Mock-data — AI-analyse kræver ANTHROPIC_API_KEY.',
+    work_history: [] as { arbejdsgiver: string; rolle: string; start: string; slut: string; dato_usikker: boolean; relevans: 'direkte' | 'indirekte'; resultater?: string | null; noter?: string | null; reference?: string | null }[],
+    cv_gaps: [] as { fra: string; til: string; laengde: string }[],
     behavior_bars: {
       'Analytisk tænkning': rnd(50, 85),
       'Beslutningsevne': rnd(40, 75),

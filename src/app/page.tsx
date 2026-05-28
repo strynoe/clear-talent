@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 // Typer (delt med resten af app'en)
-import type { Bar, Flag, Typology, Candidate, Job, Employee, Team, Recommendation, QueueItem, Member, Page } from '@/types'
+import type { Bar, Flag, Typology, Candidate, Job, Employee, Team, Recommendation, QueueItem, Member, Page, WorkHistoryItem } from '@/types'
 
 // Konstanter og helpers (udtrukket til /utils for genbrug)
 import { ALL_METRICS, GRADS } from '@/utils/constants'
@@ -69,6 +69,10 @@ function mapEmployee(e: any, teamId: number): Employee {
     team_risks: e.team_risks ?? undefined,
     personality_plain: e.personality_plain ?? undefined,
     behavior_bars: e.behavior_bars ?? undefined,
+    data_sources: e.data_sources ?? undefined,
+    candidate_summary: e.candidate_summary ?? undefined,
+    work_history: e.work_history ?? undefined,
+    cv_gaps: e.cv_gaps ?? undefined,
   }
 }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,6 +109,10 @@ function mapCandidate(c: any, jobId: number): Candidate {
     team_risks: c.team_risks ?? undefined,
     personality_plain: c.personality_plain ?? undefined,
     behavior_bars: c.behavior_bars ?? undefined,
+    data_sources: c.data_sources ?? undefined,
+    candidate_summary: c.candidate_summary ?? undefined,
+    work_history: c.work_history ?? undefined,
+    cv_gaps: c.cv_gaps ?? undefined,
   }
 }
 
@@ -136,6 +144,9 @@ export default function App() {
   const [modalJobOpen, setModalJobOpen] = useState(false)
   const [modalCandOpen, setModalCandOpen] = useState(false)
   const [viewMaterialFor, setViewMaterialFor] = useState<Candidate | null>(null)
+  // Timeline selection: "${candId}:${itemIndex}"
+  const [selectedWHKey, setSelectedWHKey] = useState<string | null>(null)
+  const [selectedWH, setSelectedWH] = useState<WorkHistoryItem | null>(null)
 
   // Job form
   const [jobTitle, setJobTitle] = useState('')
@@ -492,6 +503,10 @@ export default function App() {
         team_risks: res.team_risks,
         personality_plain: res.personality_plain,
         behavior_bars: res.behavior_bars,
+        data_sources: res.data_sources,
+        candidate_summary: res.candidate_summary,
+        work_history: res.work_history,
+        cv_gaps: res.cv_gaps,
       }
 
       const cand: Candidate = saved ? mapCandidate(saved, jobId) : candFromRes
@@ -509,6 +524,10 @@ export default function App() {
         cand.team_risks = res.team_risks
         cand.personality_plain = res.personality_plain
         cand.behavior_bars = res.behavior_bars
+        cand.data_sources = res.data_sources
+        cand.candidate_summary = res.candidate_summary
+        cand.work_history = res.work_history
+        cand.cv_gaps = res.cv_gaps
       }
 
       setJobs(prev => prev.map(j => j.id !== jobId ? j : {
@@ -829,7 +848,17 @@ export default function App() {
       }
       const emp: Employee = saved
         ? mapEmployee(saved, teamId)
-        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.bottom_line ?? res.summary ?? '', personal_bio: '', mbti: empMbti || res.mbti || '', enneagram: empEnneagram || res.enneagram || '', typology_summary: res.personality_plain ?? res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.team_contributions ?? res.collab_strengths ?? [], collab_risks: res.team_risks ?? res.collab_risks ?? [], role_fit_score: res.role_fit_score, role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '', leader_fit: res.leader_fit ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: [], risks: [], role: asLeader ? 'leader' : 'member', leadership_style: asLeader ? leadershipStyle : '', teamId }
+        : { id: Date.now() + Math.random(), name, score, grad, bars, verdict, headline: res.headline ?? '', summary: res.bottom_line ?? res.summary ?? '', personal_bio: '', mbti: empMbti || res.mbti || '', enneagram: empEnneagram || res.enneagram || '', typology_summary: res.personality_plain ?? res.typology_summary ?? '', detailed_explanation: res.detailed_explanation ?? '', typology_strengths: res.typology_strengths ?? [], typology_weaknesses: res.typology_weaknesses ?? [], collab_strengths: res.team_contributions ?? res.collab_strengths ?? [], collab_risks: res.team_risks ?? res.collab_risks ?? [], role_fit_score: res.role_fit_score, role_fit_reasoning: res.role_fit_summary ?? res.role_fit_reasoning ?? '', leader_fit: res.leader_fit ?? '', flags: res.flags ?? [], interview_questions: res.interview_questions ?? [], strengths: [], risks: [], role: asLeader ? 'leader' : 'member', leadership_style: asLeader ? leadershipStyle : '', teamId, confidence: res.confidence, confidence_reason: res.confidence_reason, overall_score: res.overall_score, overall_reason: res.overall_reason, bottom_line: res.bottom_line, team_contributions: res.team_contributions, team_risks: res.team_risks, personality_plain: res.personality_plain, behavior_bars: res.behavior_bars, data_sources: res.data_sources, candidate_summary: res.candidate_summary, work_history: res.work_history, cv_gaps: res.cv_gaps }
+      // Berig med nye felter der ikke er i DB endnu
+      if (saved) {
+        emp.confidence = res.confidence; emp.confidence_reason = res.confidence_reason
+        emp.overall_score = res.overall_score; emp.overall_reason = res.overall_reason
+        emp.bottom_line = res.bottom_line
+        emp.team_contributions = res.team_contributions; emp.team_risks = res.team_risks
+        emp.personality_plain = res.personality_plain; emp.behavior_bars = res.behavior_bars
+        emp.data_sources = res.data_sources; emp.candidate_summary = res.candidate_summary
+        emp.work_history = res.work_history; emp.cv_gaps = res.cv_gaps
+      }
       setTeams(prev => prev.map(t => t.id !== teamId ? t : {
         ...t, employees: t.employees.map(e => e.id === tempId ? emp : e),
       }))
@@ -1011,7 +1040,21 @@ export default function App() {
             <div className="cp-avatar" style={{ background: c.grad, flexShrink: 0 }}>{initials(c.name)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{c.name}</div>
-              <div style={{ fontSize: 14, color: 'var(--m1)', fontWeight: 300, marginBottom: 10 }}>{c.headline || j.title}</div>
+              <div style={{ fontSize: 14, color: 'var(--m1)', fontWeight: 300, marginBottom: c.data_sources ? 6 : 10 }}>{c.headline || j.title}</div>
+              {c.data_sources && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {[
+                    { k: 'cv', label: 'CV', active: c.data_sources.cv },
+                    { k: 'ansoegning', label: 'Ansøgning', active: c.data_sources.ansoegning },
+                    { k: 'linkedin', label: 'LinkedIn', active: c.data_sources.linkedin },
+                    { k: 'spoergeskema', label: 'Spørgeskema', active: c.data_sources.spoergeskema },
+                  ].map(({ k, label, active }) => (
+                    <span key={k} style={{ padding: '2px 7px', borderRadius: 4, fontSize: 9, fontWeight: 600, letterSpacing: '0.7px', textTransform: 'uppercase', background: active ? 'var(--soft-sage-bg)' : 'var(--s2)', color: active ? 'var(--accent)' : 'var(--m3)', border: `1px solid ${active ? '#a4c4a4' : 'var(--b1)'}`, opacity: active ? 1 : 0.5 }}>
+                      {active ? '✓ ' : '– '}{label}
+                    </span>
+                  ))}
+                </div>
+              )}
               {typeDisplay && (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ padding: '4px 12px', background: 'var(--ink)', color: 'var(--bg)', borderRadius: 6, fontSize: 12, fontWeight: 700, letterSpacing: '1.5px', fontFamily: 'monospace' }}>
@@ -1064,6 +1107,92 @@ export default function App() {
             <p style={{ margin: 0, fontSize: 15, color: 'var(--ink)', lineHeight: 1.8, fontWeight: 300 }}>{c.bottom_line || c.summary}</p>
           </div>
         )}
+
+        {/* BOX 2b — RESUMÉ */}
+        {c.candidate_summary && (
+          <div style={{ margin: '0 0 16px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 10 }}>Resumé</div>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ink)', lineHeight: 1.9, fontWeight: 300, whiteSpace: 'pre-line' }}>{c.candidate_summary}</p>
+          </div>
+        )}
+
+        {/* BOX 2c — ERFARINGSTIDSLINJE */}
+        {c.work_history?.length ? (() => {
+          const now = new Date().getFullYear()
+          const whItems = [...c.work_history!].sort((a, b) => parseInt(a.start) - parseInt(b.start))
+          const parseEnd = (s: string) => (s === 'nu' || s === "'nu'") ? now : parseInt(s)
+          const starts = whItems.map(i => parseInt(i.start))
+          const ends   = whItems.map(i => parseEnd(i.slut))
+          const minYear = Math.min(...starts)
+          const maxYear = Math.max(...ends)
+          const span = Math.max(maxYear - minYear, 1)
+          const toLeft  = (y: number) => `${((y - minYear) / span * 100).toFixed(1)}%`
+          const toWidth = (from: number, to: number) => `${Math.max((to - from) / span * 100, 2).toFixed(1)}%`
+          const midYear = Math.round(minYear + span / 2)
+          return (
+            <div style={{ margin: '0 0 16px', padding: '22px 28px', background: 'var(--s1)', borderRadius: 16, border: '1px solid var(--b1)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--ink)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 16 }}>Erfaringstidslinje</div>
+              {/* Timeline bar */}
+              <div style={{ position: 'relative', height: 30, background: 'var(--s2)', borderRadius: 8, marginBottom: 6 }}>
+                {whItems.map((item, i) => {
+                  const s = parseInt(item.start)
+                  const e = parseEnd(item.slut)
+                  const key = `${c.id}:${i}`
+                  const isSel = selectedWHKey === key
+                  return (
+                    <button
+                      key={i}
+                      title={`${item.dato_usikker ? '~' : ''}${item.start}–${item.slut}: ${item.rolle}, ${item.arbejdsgiver}`}
+                      onClick={() => { if (isSel) { setSelectedWH(null); setSelectedWHKey(null) } else { setSelectedWH(item); setSelectedWHKey(key) } }}
+                      style={{ position: 'absolute', left: toLeft(s), width: toWidth(s, e), top: 3, bottom: 3, borderRadius: 4, background: item.relevans === 'direkte' ? 'var(--accent)' : '#9aabb8', opacity: isSel ? 1 : 0.78, cursor: 'pointer', border: isSel ? '2px solid var(--ink)' : '2px solid transparent', transition: 'opacity 0.15s, border-color 0.15s', boxSizing: 'border-box', padding: 0 }}
+                    />
+                  )
+                })}
+                {c.cv_gaps?.map((gap, i) => (
+                  <div key={`g${i}`} title={`Gap: ${gap.fra}–${gap.til} (${gap.laengde})`}
+                    style={{ position: 'absolute', left: toLeft(parseInt(gap.fra)), width: toWidth(parseInt(gap.fra), parseInt(gap.til)), top: 3, bottom: 3, borderRadius: 4, background: '#c9a633', opacity: 0.5, pointerEvents: 'none' }} />
+                ))}
+              </div>
+              {/* Year labels */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+                <span style={{ fontSize: 9, color: 'var(--m2)' }}>{minYear}</span>
+                {span > 3 && <span style={{ fontSize: 9, color: 'var(--m2)' }}>{midYear}</span>}
+                <span style={{ fontSize: 9, color: 'var(--m2)' }}>{maxYear}</span>
+              </div>
+              {/* Detail panel on click */}
+              {selectedWH && selectedWHKey?.startsWith(`${c.id}:`) && (
+                <div style={{ padding: '14px 16px', background: 'var(--s2)', borderRadius: 10, border: '1px solid var(--b1)', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.4 }}>{selectedWH.rolle}</div>
+                      <div style={{ fontSize: 12, color: 'var(--m1)', marginTop: 2 }}>{selectedWH.arbejdsgiver}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
+                      <div style={{ fontSize: 11, color: 'var(--m2)' }}>{selectedWH.dato_usikker ? '~' : ''}{selectedWH.start}–{selectedWH.slut}</div>
+                      <span style={{ display: 'inline-block', marginTop: 4, padding: '1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', background: selectedWH.relevans === 'direkte' ? 'var(--soft-sage-bg)' : 'var(--s1)', color: selectedWH.relevans === 'direkte' ? 'var(--accent)' : 'var(--m2)', border: `1px solid ${selectedWH.relevans === 'direkte' ? '#a4c4a4' : 'var(--b1)'}` }}>
+                        {selectedWH.relevans}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedWH.resultater && <div style={{ fontSize: 12, color: 'var(--ink)', lineHeight: 1.55, marginBottom: 4, fontWeight: 300 }}>{selectedWH.resultater}</div>}
+                  {selectedWH.noter && <div style={{ fontSize: 11, color: 'var(--m1)', lineHeight: 1.55, fontStyle: 'italic', fontWeight: 300 }}>{selectedWH.noter}</div>}
+                  {selectedWH.reference && <div style={{ fontSize: 11, color: 'var(--m2)', marginTop: 6 }}>Reference: {selectedWH.reference}</div>}
+                </div>
+              )}
+              {/* Legend + summary */}
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--m2)' }}>{whItems.length} stilling{whItems.length !== 1 ? 'er' : ''}</span>
+                {c.cv_gaps?.length ? <span style={{ fontSize: 11, color: 'var(--m2)' }}>{c.cv_gaps.length} gap{c.cv_gaps.length !== 1 ? 's' : ''}</span> : null}
+                <span style={{ fontSize: 11, color: 'var(--m2)' }}>~{span} år</span>
+                <span style={{ fontSize: 11, color: 'var(--m2)', display: 'flex', gap: 8, alignItems: 'center', marginLeft: 4 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--accent)' }} />direkte</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#9aabb8' }} />indirekte</span>
+                  {c.cv_gaps?.length ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#c9a633' }} />gap</span> : null}
+                </span>
+              </div>
+            </div>
+          )
+        })() : null}
 
         {/* BOX 3 — ROLLE-FIT */}
         {(typeof c.role_fit_score === 'number' || c.role_fit_summary || c.role_fit_reasoning) && (

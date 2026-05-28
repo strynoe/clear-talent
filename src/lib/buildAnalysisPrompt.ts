@@ -14,6 +14,7 @@ export interface AnalysisPromptConfig {
 export function buildAnalysisPrompt(ctx: AnalysisContext = {}): AnalysisPromptConfig {
   const schemaLines = [
     `  "headline": "specifik baggrund — max 55 tegn, konkret hvad de har gjort",`,
+    `  "data_sources": {"cv": true/false, "ansoegning": true/false, "linkedin": true/false, "spoergeskema": true/false},`,
     `  "type": "MBTI + tritype som ét felt, fx 'ISTJ 163'",`,
     `  "confidence": "lav | middel | høj",`,
     `  "confidence_reason": "1 sætning: hvad begrænser eller styrker sikkerheden i type-vurderingen",`,
@@ -28,6 +29,7 @@ export function buildAnalysisPrompt(ctx: AnalysisContext = {}): AnalysisPromptCo
 
   schemaLines.push(
     `  "bottom_line": "2-3 sætninger: hvem er personen, om de passer til rollen, og den ÉNE vigtigste ting at være opmærksom på. Ingen gentagelse af tal/forløb der står i andre felter.",`,
+    `  "candidate_summary": "FAKTUELT resumé — kronologisk liste af arbejdsgivere, roller og uddannelse. Ingen adjektiver, ingen vurdering, ingen gentagelse af bottom_line.",`,
   )
 
   if (ctx.roleContext) {
@@ -61,7 +63,9 @@ export function buildAnalysisPrompt(ctx: AnalysisContext = {}): AnalysisPromptCo
     `    "Initiativ": tal 0-100,`,
     `    "Samarbejde": tal 0-100,`,
     `    "Tilpasningsevne": tal 0-100`,
-    `  }`,
+    `  },`,
+    `  "work_history": [{"arbejdsgiver": "...", "rolle": "...", "start": "ÅÅÅÅ", "slut": "ÅÅÅÅ eller 'nu'", "dato_usikker": false, "relevans": "direkte | indirekte", "resultater": "kort sætning eller null", "noter": "kort sætning eller null", "reference": "navn/titel eller null"}],`,
+    `  "cv_gaps": [{"fra": "ÅÅÅÅ", "til": "ÅÅÅÅ", "laengde": "fx ~10 mdr"}]`,
   )
 
   if (ctx.includeCvExtract) {
@@ -165,6 +169,12 @@ candidate_brings skal referere til konkrete CV-fakta — tal, titler, resultater
 
 6. LÆNGDE. Overhold længdegrænserne i skemaet. Færre, skarpere sætninger er bedre.
 
+7. CANDIDATE_SUMMARY er ren faktaekstraktion — ingen dom, ingen vurdering. List arbejdsgivere, roller og uddannelse i kronologisk rækkefølge (fx "2019–2022: Senior Consultant, McKinsey"). Gentag ALDRIG noget fra bottom_line.
+
+8. WORK_HISTORY og CV_GAPS er præcisionsudtræk. Brug dato_usikker: true for alle estimerede datoer. CV_GAPS er perioder på mindst 6 måneder mellem på hinanden følgende stillinger — scan systematisk. Returner tom array [] hvis ingen gaps identificeres.
+
+9. GAPS er rene tids-observationer — antag ALDRIG årsag (sygdom, fyring, orlov, studie eller andet). Beskriv udelukkende som tidsspand uden kommentar, vurdering eller tolkning.
+
 ━━━ OUTPUT — kun valid JSON, ingen markdown ━━━━━━━━
 
 ${schema}`
@@ -172,6 +182,6 @@ ${schema}`
   return {
     system,
     temperature: 0.3,
-    maxTokens: 3000,
+    maxTokens: 4000,
   }
 }

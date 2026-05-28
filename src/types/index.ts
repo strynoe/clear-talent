@@ -13,6 +13,31 @@ export interface InterviewQuestion {
   probes: string
 }
 
+export interface DataSources {
+  cv: boolean
+  ansoegning: boolean
+  linkedin: boolean
+  spoergeskema: boolean
+}
+
+export interface WorkHistoryItem {
+  arbejdsgiver: string
+  rolle: string
+  start: string
+  slut: string
+  dato_usikker: boolean
+  relevans: 'direkte' | 'indirekte'
+  resultater?: string | null
+  noter?: string | null
+  reference?: string | null
+}
+
+export interface CvGap {
+  fra: string
+  til: string
+  laengde: string
+}
+
 export interface BehaviorBars {
   'Analytisk tænkning': number
   'Beslutningsevne': number
@@ -70,6 +95,10 @@ export interface Candidate extends Typology {
   team_risks?: string[]
   personality_plain?: string
   behavior_bars?: BehaviorBars
+  data_sources?: DataSources
+  candidate_summary?: string
+  work_history?: WorkHistoryItem[]
+  cv_gaps?: CvGap[]
   _loading?: boolean
   _error?: string
 }
@@ -118,6 +147,10 @@ export interface Employee extends Typology {
   team_risks?: string[]
   personality_plain?: string
   behavior_bars?: BehaviorBars
+  data_sources?: DataSources
+  candidate_summary?: string
+  work_history?: WorkHistoryItem[]
+  cv_gaps?: CvGap[]
   _loading?: boolean
   _error?: string
 }
